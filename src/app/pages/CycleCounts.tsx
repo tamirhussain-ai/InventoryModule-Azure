@@ -8,9 +8,10 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { ClipboardCheck, Plus, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { ClipboardCheck, Plus, CheckCircle, Clock, AlertTriangle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { API_URL, getAuthHeaders } from '../services/api';
+import { API_URL, getAuthHeaders, deleteCycleCount } from '../services/api';
+import { AuthService } from '../services/auth';
 
 interface CycleCount {
   id: string;
@@ -132,6 +133,16 @@ export default function CycleCounts() {
     }
   };
 
+  const handleDeleteCount = async (countId: string) => {
+    try {
+      await deleteCycleCount(countId);
+      toast.success('Cycle count deleted successfully');
+      loadData();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: any = {
       pending: 'secondary',
@@ -165,6 +176,10 @@ export default function CycleCounts() {
     submitted: counts.filter(c => c.status === 'submitted').length,
     withVariance: counts.filter(c => c.variance && c.variance !== 0).length,
   };
+
+  // Check if current user is admin
+  const currentUser = AuthService.getCurrentUser();
+  const isAdmin = currentUser?.role === 'admin';
 
   return (
     <DashboardLayout>
@@ -307,6 +322,16 @@ export default function CycleCounts() {
                               >
                                 <CheckCircle className="h-4 w-4 mr-1" />
                                 Approve
+                              </Button>
+                            )}
+                            {isAdmin && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleDeleteCount(count.id)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Delete
                               </Button>
                             )}
                           </div>

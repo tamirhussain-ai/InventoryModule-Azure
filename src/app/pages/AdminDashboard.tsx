@@ -49,11 +49,15 @@ export default function AdminDashboard() {
         return item && s.available <= item.reorderThreshold;
       });
 
+      // Count only active users
+      const users = usersResult.users || [];
+      const activeUsers = users.filter((u: any) => u.active !== false);
+
       setStats({
         totalItems: items.length,
         activeItems: activeItems.length,
         totalOrders: ordersResult.orders?.length || 0,
-        totalUsers: usersResult.users?.length || 0,
+        totalUsers: activeUsers.length,
         lowStockCount: lowStock.length,
       });
     } catch (error: any) {
@@ -90,7 +94,7 @@ export default function AdminDashboard() {
 
           <Card 
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/my-orders')}
+            onClick={() => navigate('/orders')}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Total Orders</CardTitle>
@@ -112,7 +116,7 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.totalUsers}</div>
-              <p className="text-xs text-gray-500 mt-1">Registered</p>
+              <p className="text-xs text-gray-500 mt-1">Active</p>
             </CardContent>
           </Card>
 

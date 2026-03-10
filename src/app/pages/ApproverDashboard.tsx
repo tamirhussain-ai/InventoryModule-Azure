@@ -19,6 +19,18 @@ export default function ApproverDashboard() {
 
   useEffect(() => {
     loadOrders();
+
+    // Set up automatic refresh every 60 seconds
+    const intervalId = setInterval(() => {
+      // Only refresh if the tab is visible to save resources
+      if (document.visibilityState === 'visible') {
+        console.log('Auto-refreshing approver orders...');
+        loadOrders();
+      }
+    }, 60000); // 60 seconds
+
+    // Clean up interval on unmount
+    return () => clearInterval(intervalId);
   }, []);
 
   const loadOrders = async () => {
@@ -97,7 +109,7 @@ export default function ApproverDashboard() {
 
           <Card 
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/my-orders?status=approved')}
+            onClick={() => navigate('/orders?status=approved')}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Approved</CardTitle>
@@ -111,7 +123,7 @@ export default function ApproverDashboard() {
 
           <Card 
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/my-orders?status=denied')}
+            onClick={() => navigate('/orders?status=denied')}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Denied</CardTitle>

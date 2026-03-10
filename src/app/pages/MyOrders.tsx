@@ -209,7 +209,14 @@ export default function MyOrders() {
                     {filteredOrders.map((order) => (
                       <TableRow key={order.id}>
                         <TableCell className="font-medium">
-                          #{order.id.slice(0, 8)}
+                          <div className="flex items-center gap-2">
+                            #{order.id.slice(0, 8)}
+                            {order.lastEditedAt && (
+                              <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300">
+                                Edited
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {new Date(order.submittedAt).toLocaleDateString('en-US', {

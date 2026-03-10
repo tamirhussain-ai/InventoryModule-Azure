@@ -8,7 +8,7 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { getStock, getItems, getLocations, adjustStock } from '../services/api';
+import { getStock, getItems, getLocations, adjustStock, API_URL, getAuthHeaders } from '../services/api';
 import { Package, Plus, Minus, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -35,7 +35,12 @@ export default function StockManagement() {
         getItems({ active: true }),
         getLocations(),
       ]);
-      setStock(stockResult.stock || []);
+      
+      // Filter out stock records for deleted/inactive items
+      const activeItemIds = new Set((itemsResult.items || []).map((item: any) => item.id));
+      const filteredStock = (stockResult.stock || []).filter((s: any) => activeItemIds.has(s.itemId));
+      
+      setStock(filteredStock);
       setItems(itemsResult.items || []);
       setLocations(locationsResult.locations || []);
     } catch (error: any) {
@@ -99,6 +104,11 @@ export default function StockManagement() {
                         <div className="flex items-center space-x-3">
                           <p className="font-medium text-gray-900">{getItemName(s.itemId)}</p>
                           <span className="text-sm text-gray-500">@ {getLocationName(s.locationId)}</span>
+                          {s.binCode && (
+                            <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                              Bin: {s.binCode}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-2 flex space-x-6 text-sm">
                           <div>
@@ -153,11 +163,40 @@ function AdjustStockDialog({ open, onOpenChange, items, locations, onSuccess }: 
   const [formData, setFormData] = useState({
     itemId: '',
     locationId: '',
+    binId: '',
     quantity: 0,
     reason: '',
     type: 'adjustment',
   });
   const [loading, setLoading] = useState(false);
+  const [bins, setBins] = useState<any[]>([]);
+  const [loadingBins, setLoadingBins] = useState(false);
+
+  // Load bins when location changes
+  useEffect(() => {
+    if (formData.locationId && formData.locationId !== 'main') {
+      loadBins(formData.locationId);
+    } else {
+      setBins([]);
+      setFormData(prev => ({ ...prev, binId: '' }));
+    }
+  }, [formData.locationId]);
+
+  const loadBins = async (locationId: string) => {
+    setLoadingBins(true);
+    try {
+      const response = await fetch(`${API_URL}/bins?locationId=${locationId}`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json();
+      setBins(data.bins || []);
+    } catch (error) {
+      console.error('Error loading bins:', error);
+      setBins([]);
+    } finally {
+      setLoadingBins(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,6 +209,7 @@ function AdjustStockDialog({ open, onOpenChange, items, locations, onSuccess }: 
       setFormData({
         itemId: '',
         locationId: '',
+        binId: '',
         quantity: 0,
         reason: '',
         type: 'adjustment',
@@ -212,7 +252,7 @@ function AdjustStockDialog({ open, onOpenChange, items, locations, onSuccess }: 
             <Label htmlFor="location">Location *</Label>
             <Select
               value={formData.locationId}
-              onValueChange={(value) => setFormData({ ...formData, locationId: value })}
+              onValueChange={(value) => setFormData({ ...formData, locationId: value, binId: '' })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select location" />
@@ -227,6 +267,31 @@ function AdjustStockDialog({ open, onOpenChange, items, locations, onSuccess }: 
               </SelectContent>
             </Select>
           </div>
+
+          {formData.locationId && formData.locationId !== 'main' && (
+            <div>
+              <Label htmlFor="bin">Bin Location (Optional)</Label>
+              <Select
+                value={formData.binId || 'none'}
+                onValueChange={(value) => setFormData({ ...formData, binId: value === 'none' ? '' : value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingBins ? "Loading bins..." : "Select bin (or leave empty)"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No specific bin</SelectItem>
+                  {bins.filter((bin: any) => bin.active).map((bin: any) => (
+                    <SelectItem key={bin.id} value={bin.id}>
+                      {bin.binCode} - {Math.round((bin.currentOccupancy / bin.capacity) * 100)}% full
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {bins.length === 0 && !loadingBins && (
+                <p className="text-sm text-gray-500 mt-1">No bins available for this location</p>
+              )}
+            </div>
+          )}
 
           <div>
             <Label htmlFor="quantity">Quantity (+ to add, - to remove) *</Label>
@@ -287,11 +352,40 @@ function ReceiveStockDialog({ open, onOpenChange, items, locations, onSuccess }:
   const [formData, setFormData] = useState({
     itemId: '',
     locationId: 'main',
+    binId: '',
     quantity: 0,
     reason: 'Purchase order receipt',
     type: 'receive',
   });
   const [loading, setLoading] = useState(false);
+  const [bins, setBins] = useState<any[]>([]);
+  const [loadingBins, setLoadingBins] = useState(false);
+
+  // Load bins when location changes
+  useEffect(() => {
+    if (formData.locationId && formData.locationId !== 'main') {
+      loadBins(formData.locationId);
+    } else {
+      setBins([]);
+      setFormData(prev => ({ ...prev, binId: '' }));
+    }
+  }, [formData.locationId]);
+
+  const loadBins = async (locationId: string) => {
+    setLoadingBins(true);
+    try {
+      const response = await fetch(`${API_URL}/bins?locationId=${locationId}`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json();
+      setBins(data.bins || []);
+    } catch (error) {
+      console.error('Error loading bins:', error);
+      setBins([]);
+    } finally {
+      setLoadingBins(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -304,6 +398,7 @@ function ReceiveStockDialog({ open, onOpenChange, items, locations, onSuccess }:
       setFormData({
         itemId: '',
         locationId: 'main',
+        binId: '',
         quantity: 0,
         reason: 'Purchase order receipt',
         type: 'receive',
@@ -346,7 +441,7 @@ function ReceiveStockDialog({ open, onOpenChange, items, locations, onSuccess }:
             <Label htmlFor="location">Receiving Location *</Label>
             <Select
               value={formData.locationId}
-              onValueChange={(value) => setFormData({ ...formData, locationId: value })}
+              onValueChange={(value) => setFormData({ ...formData, locationId: value, binId: '' })}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -361,6 +456,31 @@ function ReceiveStockDialog({ open, onOpenChange, items, locations, onSuccess }:
               </SelectContent>
             </Select>
           </div>
+
+          {formData.locationId && formData.locationId !== 'main' && (
+            <div>
+              <Label htmlFor="bin">Bin Location (Optional)</Label>
+              <Select
+                value={formData.binId || 'none'}
+                onValueChange={(value) => setFormData({ ...formData, binId: value === 'none' ? '' : value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingBins ? "Loading bins..." : "Select bin (or leave empty)"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No specific bin</SelectItem>
+                  {bins.filter((bin: any) => bin.active).map((bin: any) => (
+                    <SelectItem key={bin.id} value={bin.id}>
+                      {bin.binCode} - {Math.round((bin.currentOccupancy / bin.capacity) * 100)}% full
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {bins.length === 0 && !loadingBins && (
+                <p className="text-sm text-gray-500 mt-1">No bins available for this location</p>
+              )}
+            </div>
+          )}
 
           <div>
             <Label htmlFor="quantity">Quantity Received *</Label>

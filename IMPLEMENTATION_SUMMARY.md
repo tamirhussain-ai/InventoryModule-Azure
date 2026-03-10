@@ -394,6 +394,67 @@ Uses DashboardLayout component with role-based navigation sidebar.
 
 ---
 
+## 🔧 ADMIN CAPABILITIES
+
+### Edit Fulfilled Orders (Admin Only)
+
+**Feature**: Administrators can modify fulfilled orders after completion, with full inventory adjustments and audit trail.
+
+**Use Cases**:
+- Correct fulfillment errors after the fact
+- Adjust quantities if wrong amount was shipped
+- Update notes or documentation
+- Fix data entry mistakes in completed orders
+
+**How It Works**:
+
+1. **Access**: Navigate to any fulfilled order detail page as an Admin user
+2. **Edit Button**: An "Edit Order" button appears for fulfilled orders (Admin only)
+3. **Modification**:
+   - Adjust fulfilled quantities for individual items
+   - Modify fulfillment notes
+   - All changes are validated
+4. **Inventory Reconciliation**:
+   - System automatically reverses the original fulfillment
+   - Adds back previously fulfilled quantities to stock
+   - Applies new fulfillment quantities
+   - Records all movements with "admin edit" reason codes
+5. **Audit Trail**:
+   - All changes are logged with admin user ID and timestamp
+   - Original order state preserved in audit logs
+   - Order gets `lastEditedAt` and `lastEditedBy` fields
+   - Notification sent to original requestor about the modification
+
+**API Endpoint**:
+```
+PUT /make-server-5ec3cec0/orders/:id/update-fulfilled
+```
+
+**Security**:
+- Restricted to Admin role only (verified server-side)
+- Cannot edit non-fulfilled orders (status must be 'fulfilled')
+- Full audit trail maintained for compliance
+- Requestor notified of all modifications
+
+**UI Indicators**:
+- Edited orders show warning banner: "⚠️ Last edited on {date}"
+- Edit dialog displays warnings about inventory impact
+- Clear indication that changes will be audited
+
+**Backend Processing**:
+1. Validates user is Admin
+2. Verifies order status is 'fulfilled'
+3. Creates reversal movements for old quantities
+4. Creates new fulfillment movements
+5. Updates order record with new data
+6. Adds `lastEditedAt` and `lastEditedBy` timestamps
+7. Creates audit log entry
+8. Sends notification to requestor
+
+This feature ensures admins can correct mistakes while maintaining full transparency and traceability for regulatory compliance.
+
+---
+
 ## 🎓 GETTING STARTED GUIDE
 
 ### For First-Time Setup

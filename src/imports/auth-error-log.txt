@@ -1,0 +1,71 @@
+[Violation] Forced reflow while executing JavaScript took 35ms
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44786 === RUN DIAGNOSTICS CALLED ===
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44786 Access Token: Present (874 chars)
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44786 Current User: {id: '26c7967e-9c07-4480-9c06-728941d2bf89', name: 'Tamir Hussain', role: 'admin', email: 'tamirhussain@gmail.com', createdAt: '2026-02-14T21:44:35.025Z', …}
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44786 User Role: admin
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44803 Making request to: https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/email-diagnostics
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44803 Request headers: {X-Session-Token: 'eyJhbGciOiJFUzI1NiIs...'}
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44806   GET https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/email-diagnostics 401 (Unauthorized)
+S @ 654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44806
+(anonymous) @ 654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44838
+sp @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+qa @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+NE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Ri @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+BM @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Is @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+b1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+fy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+sy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44812 Response status: 401
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44812 Response ok: false
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44814 Response body: {"code":401,"message":"Missing authorization header"}
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44815  ❌ Session expired or invalid (401)
+S @ 654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44815
+await in S
+(anonymous) @ 654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44838
+sp @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+qa @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+NE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Ri @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+BM @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Is @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+b1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+fy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+sy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+[NEW] Explain Console errors by using Copilot in Edge: click
+         
+         to explain an error. 
+        Learn more
+        Don't show again
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44806 Fetch failed loading: GET "https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/email-diagnostics".
+S @ 654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44806
+(anonymous) @ 654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44838
+sp @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+qa @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+NE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Ri @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+BM @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Is @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+b1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+fy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+sy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:7979 Fetch finished loading: POST "https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/auth/signout".
+signout @ 654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:7979
+x @ 654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44748
+(anonymous) @ 654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44843
+Rc @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+Oy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+useState @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+se.useState @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+uE @ 654fc3b83e8967a61d295ea49f46db9f5d9e197c.js:44746
+nS @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+hv @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+R1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+w1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+DM @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+qd @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+b1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+fy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+sy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+export-dice-05753835.figma.site/:1 [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://www.chromium.org/developers/design-documents/create-amazing-password-forms) 

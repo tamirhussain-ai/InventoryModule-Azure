@@ -45,10 +45,35 @@ export default function Login() {
     setLoading(true);
 
     try {
+      console.log('=== LOGIN ATTEMPT ===');
+      console.log('Email:', email);
+      
       const result = await AuthService.signin(email, password);
+      
+      console.log('=== LOGIN SUCCESS ===');
+      console.log('Result:', result);
+      console.log('Access token received:', result.accessToken ? `Yes (${result.accessToken.length} chars)` : 'No');
+      console.log('User:', result.user);
+      console.log('Debug info:', result.debug);
+      
+      // Verify token was stored in localStorage
+      const storedToken = localStorage.getItem('accessToken');
+      console.log('Token stored in localStorage:', storedToken ? `Yes (${storedToken.length} chars)` : 'No');
+      console.log('Tokens match:', result.accessToken === storedToken);
+      
       toast.success('Signed in successfully!');
-      redirectToDashboard(result.user.role);
+      // If user has a temporary password or expired password, force them to change it first
+      if (result.user.mustResetPassword) {
+        navigate('/change-password');
+      } else if (result.passwordExpired) {
+        toast.warning('Your password has expired. Please set a new password to continue.');
+        navigate('/change-password?reason=expired');
+      } else {
+        redirectToDashboard(result.user.role);
+      }
     } catch (error: any) {
+      console.error('=== LOGIN FAILED ===');
+      console.error('Error:', error);
       toast.error(error.message || 'Sign in failed');
     } finally {
       setLoading(false);
@@ -90,6 +115,11 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+              <div className="text-right">
+                <Link to="/forgot-password" className="text-sm text-blue-600 hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign In'}

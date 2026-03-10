@@ -8,11 +8,14 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
+import { Alert, AlertDescription } from '../components/ui/alert';
 import { Textarea } from '../components/ui/textarea';
-import { getItems, createItem, getCategories, getLocations, getStock, searchOnline } from '../services/api';
+import { getItems, createItem, getCategories, getLocations, getStock, searchOnline, uploadProductImage, getRequestorCategorySettings } from '../services/api';
 import { AuthService } from '../services/auth';
-import { Search, Plus, ShoppingCart, Package, AlertCircle, Globe, Loader2, LayoutGrid, List } from 'lucide-react';
+import { Search, Plus, ShoppingCart, Package, AlertCircle, Globe, Loader2, LayoutGrid, List, Camera, X, Upload, ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRef, useCallback } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 
 export default function ItemCatalog() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -27,10 +30,20 @@ export default function ItemCatalog() {
   const [onlineResults, setOnlineResults] = useState<any[]>([]);
   const [searchingOnline, setSearchingOnline] = useState(false);
   const [showOnlineResults, setShowOnlineResults] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    // Load saved view preference from localStorage
+    const saved = localStorage.getItem('itemCatalogView');
+    return (saved === 'grid' || saved === 'list') ? saved : 'grid';
+  });
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerElementId = 'barcode-scanner';
+  const [categoryRestrictions, setCategoryRestrictions] = useState<any>(null);
 
   const user = AuthService.getCurrentUser();
   const canManage = user?.role === 'admin' || user?.role === 'fulfillment';
+  const isRequestor = user?.role === 'requestor';
 
   useEffect(() => {
     loadData();
@@ -40,16 +53,41 @@ export default function ItemCatalog() {
     }
   }, []);
 
+  // Save view mode preference to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('itemCatalogView', viewMode);
+  }, [viewMode]);
+
   const loadData = async () => {
     try {
-      const [itemsResult, categoriesResult, stockResult] = await Promise.all([
+      const promises = [
         getItems({ active: true }),
         getCategories(),
         getStock(),
-      ]);
+      ];
+      
+      // Load category restrictions if user is a requestor
+      if (isRequestor) {
+        promises.push(getRequestorCategorySettings());
+      }
+      
+      const results = await Promise.all(promises);
+      const [itemsResult, categoriesResult, stockResult, restrictionsResult] = results;
+      
       setItems(itemsResult.items || []);
-      setCategories(categoriesResult.categories || []);
+      
+      // Deduplicate categories by ID to prevent React key warnings
+      const rawCategories = categoriesResult.categories || [];
+      const uniqueCategories = Array.from(
+        new Map(rawCategories.map((cat: any) => [cat.id, cat])).values()
+      );
+      setCategories(uniqueCategories);
+      
       setStock(stockResult.stock || []);
+      
+      if (isRequestor && restrictionsResult) {
+        setCategoryRestrictions(restrictionsResult.settings);
+      }
     } catch (error: any) {
       toast.error('Failed to load catalog');
       console.error(error);
@@ -84,7 +122,7 @@ export default function ItemCatalog() {
       updatedCart = [...cart, {
         itemId: item.id,
         name: item.name,
-        unit: item.unit,
+        unit: item.unitOfMeasure,
         quantity,
         locationId: 'main',
       }];
@@ -104,11 +142,23 @@ export default function ItemCatalog() {
     const matchesSearch = !searchTerm || 
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchTerm.toLowerCase());
+      item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.internalCode && item.internalCode.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
     
-    return matchesSearch && matchesCategory;
+    // Apply category restrictions for requestors
+    let allowedByRole = true;
+    if (isRequestor && categoryRestrictions?.enabled) {
+      const allowedCategories = categoryRestrictions.allowedCategories || [];
+      if (allowedCategories.length > 0) {
+        // Find the category object for this item
+        const itemCategory = categories.find(cat => cat.name === item.category);
+        allowedByRole = itemCategory ? allowedCategories.includes(itemCategory.id) : false;
+      }
+    }
+    
+    return matchesSearch && matchesCategory && allowedByRole;
   });
 
   const handleSearchOnline = async () => {
@@ -147,14 +197,15 @@ export default function ItemCatalog() {
       name: onlineItem.name || '',
       description: onlineItem.description || '',
       category: onlineItem.category || 'uncategorized',
-      unit: 'each',
+      unitOfMeasure: 'each',
       packSize: 1,
       sku: onlineItem.sku || '',
       vendor: onlineItem.brand || '',
       cost: 0,
       reorderThreshold: 10,
       maxPar: 100,
-      leadTime: 7,
+      leadTimeDays: 7,
+      imageUrl: onlineItem.imageUrl || '',
     };
     
     setFormData(importedData);
@@ -166,18 +217,86 @@ export default function ItemCatalog() {
     }, 100);
   };
 
+  const startScanner = useCallback(async () => {
+    try {
+      setScanning(true);
+      
+      // Create scanner instance if it doesn't exist
+      if (!scannerRef.current) {
+        scannerRef.current = new Html5Qrcode(scannerElementId);
+      }
+
+      const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0,
+      };
+
+      await scannerRef.current.start(
+        { facingMode: 'environment' }, // Use back camera
+        config,
+        (decodedText) => {
+          // Successfully scanned
+          toast.success('Barcode scanned!');
+          setSearchTerm(decodedText);
+          stopScanner();
+          
+          // Optionally trigger online search automatically
+          setTimeout(() => {
+            handleSearchOnline();
+          }, 300);
+        },
+        (errorMessage) => {
+          // Scanning error (usually just "not found"), ignore
+        }
+      );
+    } catch (err: any) {
+      console.error('Error starting scanner:', err);
+      toast.error('Failed to start camera. Please check permissions.');
+      setScannerOpen(false);
+      setScanning(false);
+    }
+  }, []);
+
+  const stopScanner = useCallback(async () => {
+    if (scannerRef.current && scanning) {
+      try {
+        await scannerRef.current.stop();
+        scannerRef.current.clear();
+      } catch (err) {
+        console.error('Error stopping scanner:', err);
+      }
+    }
+    setScanning(false);
+    setScannerOpen(false);
+  }, [scanning]);
+
+  const handleOpenScanner = () => {
+    setScannerOpen(true);
+    // Start scanner after dialog is open
+    setTimeout(() => {
+      startScanner();
+    }, 100);
+  };
+
+  const handleCloseScanner = () => {
+    stopScanner();
+  };
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     category: 'uncategorized',
-    unit: 'each',
+    unitOfMeasure: 'each',
     packSize: 1,
     sku: '',
+    internalCode: '',
     vendor: '',
     cost: 0,
     reorderThreshold: 10,
     maxPar: 100,
-    leadTime: 7,
+    leadTimeDays: 7,
+    imageUrl: '',
   });
 
   return (
@@ -205,14 +324,16 @@ export default function ItemCatalog() {
                   name: '',
                   description: '',
                   category: 'uncategorized',
-                  unit: 'each',
+                  unitOfMeasure: 'each',
                   packSize: 1,
                   sku: '',
+                  internalCode: '',
                   vendor: '',
                   cost: 0,
                   reorderThreshold: 10,
                   maxPar: 100,
-                  leadTime: 7,
+                  leadTimeDays: 7,
+                  imageUrl: '',
                 });
                 setCreateDialogOpen(true);
               }}>
@@ -222,6 +343,17 @@ export default function ItemCatalog() {
             )}
           </div>
         </div>
+
+        {/* Category Restriction Notice for Requestors */}
+        {isRequestor && categoryRestrictions?.enabled && categoryRestrictions.allowedCategories?.length > 0 && (
+          <Alert className="bg-blue-50 border-blue-200">
+            <AlertCircle className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-blue-800">
+              <strong>Limited catalog access:</strong> You can only view and order items from specific categories. 
+              If you need access to additional categories, please contact your administrator.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Filters */}
         <Card>
@@ -263,25 +395,36 @@ export default function ItemCatalog() {
                       />
                     </div>
                     {canManage && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSearchOnline}
-                        disabled={searchingOnline || !searchTerm}
-                        className="w-full"
-                      >
-                        {searchingOnline ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Searching Online...
-                          </>
-                        ) : (
-                          <>
-                            <Globe className="h-4 w-4 mr-2" />
-                            Search Online (SKU/UPC/EAN/Barcode)
-                          </>
-                        )}
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleOpenScanner}
+                          className="flex-1"
+                        >
+                          <Camera className="h-4 w-4 mr-2" />
+                          Scan Barcode
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSearchOnline}
+                          disabled={searchingOnline || !searchTerm}
+                          className="flex-1"
+                        >
+                          {searchingOnline ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Searching...
+                            </>
+                          ) : (
+                            <>
+                              <Globe className="h-4 w-4 mr-2" />
+                              Search Online
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -293,16 +436,53 @@ export default function ItemCatalog() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Categories</SelectItem>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.name}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
+                      {categories
+                        .filter((cat) => {
+                          // Filter categories for requestors based on restrictions
+                          if (isRequestor && categoryRestrictions?.enabled) {
+                            const allowedCategories = categoryRestrictions.allowedCategories || [];
+                            return allowedCategories.length === 0 || allowedCategories.includes(cat.id);
+                          }
+                          return true;
+                        })
+                        .map((cat) => (
+                          <SelectItem key={cat.id} value={cat.name}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
             </div>
+
+            {/* Barcode Scanner Dialog */}
+            <Dialog open={scannerOpen} onOpenChange={handleCloseScanner}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center">
+                    <Camera className="h-5 w-5 mr-2" />
+                    Scan Barcode
+                  </DialogTitle>
+                  <DialogDescription>
+                    Point your camera at a barcode (UPC, EAN, Code128, etc.)
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div 
+                    id={scannerElementId} 
+                    className="w-full rounded-lg overflow-hidden bg-black"
+                    style={{ minHeight: '300px' }}
+                  />
+                  <div className="flex justify-center">
+                    <Button variant="outline" onClick={handleCloseScanner}>
+                      <X className="h-4 w-4 mr-2" />
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
 
@@ -395,6 +575,20 @@ export default function ItemCatalog() {
 
               return (
                 <Card key={item.id} className={isOutOfStock ? 'opacity-60' : ''}>
+                  {/* Product Image */}
+                  {item.imageUrl ? (
+                    <div className="w-full h-48 overflow-hidden rounded-t-lg bg-gray-50">
+                      <img
+                        src={item.imageUrl}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full h-48 flex items-center justify-center bg-gray-100 rounded-t-lg">
+                      <Package className="h-16 w-16 text-gray-300" />
+                    </div>
+                  )}
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg">{item.name}</CardTitle>
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -413,8 +607,9 @@ export default function ItemCatalog() {
                     <p className="text-sm text-gray-600 line-clamp-2">{item.description}</p>
                     <div className="space-y-1 text-sm text-gray-700">
                       <p><strong>SKU:</strong> {item.sku || 'N/A'}</p>
-                      <p><strong>Unit:</strong> {item.unit} ({item.packSize} per pack)</p>
-                      <p><strong>Available:</strong> {available} {item.unit}(s)</p>
+                      <p><strong>Internal Code:</strong> {item.internalCode || 'N/A'}</p>
+                      <p><strong>Unit:</strong> {item.unitOfMeasure} ({item.packSize} per pack)</p>
+                      <p><strong>Available:</strong> {available} {item.unitOfMeasure}(s)</p>
                       {item.vendor && <p><strong>Vendor:</strong> {item.vendor}</p>}
                     </div>
                     <div className="flex flex-col gap-2 pt-2">
@@ -444,6 +639,7 @@ export default function ItemCatalog() {
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b">
                     <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
@@ -460,6 +656,19 @@ export default function ItemCatalog() {
 
                       return (
                         <tr key={item.id} className={isOutOfStock ? 'opacity-60' : 'hover:bg-gray-50'}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {item.imageUrl ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                className="w-12 h-12 object-cover rounded"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded">
+                                <Package className="h-6 w-6 text-gray-300" />
+                              </div>
+                            )}
+                          </td>
                           <td className="px-6 py-4">
                             <div>
                               <div className="text-sm font-medium text-gray-900">{item.name}</div>
@@ -471,7 +680,7 @@ export default function ItemCatalog() {
                             <Badge variant="secondary">{item.category}</Badge>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {available} {item.unit}(s)
+                            {available} {item.unitOfMeasure}(s)
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {isOutOfStock ? (
@@ -530,13 +739,71 @@ export default function ItemCatalog() {
 function CreateItemDialog({ open, onOpenChange, categories, onSuccess, initialData, onDataChange }: any) {
   const [formData, setFormData] = useState(initialData);
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Update formData when initialData changes (e.g., when importing from online search)
   useEffect(() => {
     if (initialData) {
       setFormData(initialData);
+      // Set preview if image URL exists in initial data
+      if (initialData.imageUrl) {
+        setPreviewUrl(initialData.imageUrl);
+      }
     }
   }, [initialData]);
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed.');
+      return;
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File too large. Maximum size is 5MB.');
+      return;
+    }
+
+    // Show preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload to server
+    setUploadingImage(true);
+    try {
+      const result = await uploadProductImage(file);
+      setFormData({ ...formData, imageUrl: result.imageUrl });
+      toast.success('Image uploaded successfully');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to upload image');
+      setPreviewUrl(''); // Clear preview on error
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setFormData({ ...formData, imageUrl: '' });
+    setPreviewUrl('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleUrlChange = (url: string) => {
+    setFormData({ ...formData, imageUrl: url });
+    setPreviewUrl(url);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -550,15 +817,18 @@ function CreateItemDialog({ open, onOpenChange, categories, onSuccess, initialDa
         name: '',
         description: '',
         category: 'uncategorized',
-        unit: 'each',
+        unitOfMeasure: 'each',
         packSize: 1,
         sku: '',
+        internalCode: '',
         vendor: '',
         cost: 0,
         reorderThreshold: 10,
         maxPar: 100,
-        leadTime: 7,
+        leadTimeDays: 7,
+        imageUrl: '',
       });
+      setPreviewUrl('');
     } catch (error: any) {
       toast.error(error.message || 'Failed to create item');
     } finally {
@@ -593,6 +863,86 @@ function CreateItemDialog({ open, onOpenChange, categories, onSuccess, initialDa
                 rows={3}
               />
             </div>
+            
+            {/* Product Image Upload */}
+            <div className="col-span-2">
+              <Label htmlFor="productImage">Product Image</Label>
+              <div className="mt-2 space-y-3">
+                {previewUrl ? (
+                  <div className="relative inline-block">
+                    <img
+                      src={previewUrl}
+                      alt="Product preview"
+                      className="w-32 h-32 object-cover rounded-lg border-2 border-gray-200"
+                      onError={(e) => {
+                        // If image fails to load, show broken image placeholder
+                        e.currentTarget.style.display = 'none';
+                        toast.error('Failed to load image from URL');
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
+                      onClick={handleRemoveImage}
+                      disabled={uploadingImage}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                    <ImageIcon className="h-8 w-8 text-gray-400" />
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingImage}
+                    >
+                      {uploadingImage ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          Upload Image
+                        </>
+                      )}
+                    </Button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      id="productImage"
+                      accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-600 font-medium">Or enter image URL:</p>
+                    <Input
+                      id="imageUrl"
+                      type="url"
+                      placeholder="https://example.com/image.jpg"
+                      value={formData.imageUrl}
+                      onChange={(e) => handleUrlChange(e.target.value)}
+                      disabled={uploadingImage}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Upload: Maximum file size 5MB. Supported formats: JPEG, PNG, WebP, GIF
+                </p>
+              </div>
+            </div>
             <div>
               <Label htmlFor="category">Category</Label>
               <Select
@@ -604,28 +954,40 @@ function CreateItemDialog({ open, onOpenChange, categories, onSuccess, initialDa
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="uncategorized">Uncategorized</SelectItem>
-                  {categories.map((cat: any) => (
-                    <SelectItem key={cat.id} value={cat.name}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
+                  {categories
+                    .filter((cat: any) => cat.active !== false)
+                    .map((cat: any) => (
+                      <SelectItem key={cat.id} value={cat.name}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="sku">SKU / Internal Code</Label>
+              <Label htmlFor="sku">SKU</Label>
               <Input
                 id="sku"
+                placeholder="Manufacturer SKU"
                 value={formData.sku}
                 onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
               />
             </div>
             <div>
-              <Label htmlFor="unit">Unit of Measure</Label>
+              <Label htmlFor="internalCode">Internal Code</Label>
               <Input
-                id="unit"
-                value={formData.unit}
-                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                id="internalCode"
+                placeholder="Your internal reference code"
+                value={formData.internalCode}
+                onChange={(e) => setFormData({ ...formData, internalCode: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="unitOfMeasure">Unit of Measure</Label>
+              <Input
+                id="unitOfMeasure"
+                value={formData.unitOfMeasure}
+                onChange={(e) => setFormData({ ...formData, unitOfMeasure: e.target.value })}
               />
             </div>
             <div>
@@ -674,12 +1036,12 @@ function CreateItemDialog({ open, onOpenChange, categories, onSuccess, initialDa
               />
             </div>
             <div>
-              <Label htmlFor="leadTime">Lead Time (days)</Label>
+              <Label htmlFor="leadTimeDays">Lead Time (days)</Label>
               <Input
-                id="leadTime"
+                id="leadTimeDays"
                 type="number"
-                value={formData.leadTime}
-                onChange={(e) => setFormData({ ...formData, leadTime: Number(e.target.value) })}
+                value={formData.leadTimeDays}
+                onChange={(e) => setFormData({ ...formData, leadTimeDays: Number(e.target.value) })}
               />
             </div>
           </div>

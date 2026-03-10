@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { AuthService } from '../services/auth';
 
 interface ProtectedRouteProps {
@@ -8,20 +8,26 @@ interface ProtectedRouteProps {
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
     checkAuth();
-  }, []);
+  }, []); // Only check on mount, not on every path change
 
   const checkAuth = async () => {
     const token = AuthService.getAccessToken();
     const user = AuthService.getCurrentUser();
 
-    console.log('ProtectedRoute - Checking auth:', { hasToken: !!token, hasUser: !!user });
+    console.log('ProtectedRoute - Checking auth:', { 
+      hasToken: !!token, 
+      hasUser: !!user,
+      path: location.pathname 
+    });
 
     if (!token || !user) {
       console.log('ProtectedRoute - No valid session, redirecting to login');
+      setIsChecking(false);
       navigate('/', { replace: true });
       return;
     }
@@ -31,6 +37,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
       const sessionUser = await AuthService.checkSession();
       if (!sessionUser) {
         console.log('ProtectedRoute - Session invalid, redirecting to login');
+        setIsChecking(false);
         navigate('/', { replace: true });
         return;
       }
@@ -38,6 +45,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
       setIsChecking(false);
     } catch (error) {
       console.error('ProtectedRoute - Session check failed:', error);
+      setIsChecking(false);
       navigate('/', { replace: true });
     }
   };

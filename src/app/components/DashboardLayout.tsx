@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { AuthService, User } from '../services/auth';
-import { getNotifications, markNotificationRead } from '../services/api';
+import { getNotifications, markNotificationRead, getBadgeCounts, getAppSettings, checkPasswordExpiry } from '../services/api';
 import { 
   Package, 
   ShoppingCart, 
@@ -30,6 +30,12 @@ import {
   PackageCheck,
   CheckSquare,
   ArrowLeft,
+  Undo2,
+  UserCog,
+  AlertCircle,
+  User as UserIcon,
+  KeyRound,
+  ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -42,7 +48,32 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [badgeCounts, setBadgeCounts] = useState<any>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [appName, setAppName] = useState('SHC Inventory');
+
+  // Check for impersonation
+  const isImpersonating = localStorage.getItem('impersonatedRole') !== null;
+  const actualRole = localStorage.getItem('actualRole');
+
+  const handleStopImpersonating = () => {
+    // Get the actual role before removing from storage
+    const actualRoleValue = localStorage.getItem('actualRole');
+    const currentUser = AuthService.getCurrentUser();
+    
+    if (actualRoleValue && currentUser) {
+      // Restore the user object with the actual admin role
+      const restoredUser = { ...currentUser, role: actualRoleValue };
+      localStorage.setItem('user', JSON.stringify(restoredUser));
+    }
+    
+    // Remove impersonation flags
+    localStorage.removeItem('impersonatedRole');
+    localStorage.removeItem('actualRole');
+    
+    toast.success('Stopped impersonating. Returning to Admin view.');
+    window.location.reload();
+  };
 
   useEffect(() => {
     const currentUser = AuthService.getCurrentUser();
@@ -53,6 +84,22 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     if (currentUser) {
       setUser(currentUser);
       loadNotifications();
+      loadBadgeCounts();
+      loadAppSettings();
+      checkPasswordExpiryStatus();
+
+      // Set up automatic refresh for notifications and badge counts every 60 seconds
+      const intervalId = setInterval(() => {
+        // Only refresh if the tab is visible to save resources
+        if (document.visibilityState === 'visible') {
+          console.log('Auto-refreshing notifications and badge counts...');
+          loadNotifications();
+          loadBadgeCounts();
+        }
+      }, 60000); // 60 seconds
+
+      // Clean up interval on unmount
+      return () => clearInterval(intervalId);
     }
   }, []);
 
@@ -78,8 +125,68 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       }
     } catch (error: any) {
       // Silently handle notification errors - it's not critical functionality
-      console.error('Failed to load notifications:', error.message || error);
+      // Don't log if it's a connection error (server may be starting)
+      if (!error.message?.includes('Cannot connect to server')) {
+        console.error('Failed to load notifications:', error.message || error);
+      }
       setNotifications([]);
+    }
+  };
+
+  const loadBadgeCounts = async () => {
+    try {
+      // Only load badge counts if user is authenticated with a valid token
+      const token = AuthService.getAccessToken();
+      if (!token) {
+        console.log('Skipping badge counts load - no access token');
+        return;
+      }
+      
+      console.log('Loading badge counts...');
+      const result = await getBadgeCounts();
+      
+      if (result && result.counts) {
+        setBadgeCounts(result.counts);
+        console.log('Loaded badge counts:', result.counts);
+      } else {
+        console.warn('Unexpected badge counts response format:', result);
+        setBadgeCounts({});
+      }
+    } catch (error: any) {
+      // Silently handle badge count errors - it's not critical functionality
+      // Don't log if it's a connection error (server may be starting)
+      if (!error.message?.includes('Cannot connect to server')) {
+        console.error('Failed to load badge counts:', error.message || error);
+      }
+      setBadgeCounts({});
+    }
+  };
+
+  const loadAppSettings = async () => {
+    try {
+      const token = AuthService.getAccessToken();
+      if (!token) return;
+      const result = await getAppSettings();
+      if (result && result.settings && result.settings.appName) {
+        setAppName(result.settings.appName);
+      }
+    } catch (error: any) {
+      console.error('Failed to load app settings:', error.message || error);
+    }
+  };
+
+  const checkPasswordExpiryStatus = async () => {
+    try {
+      const token = AuthService.getAccessToken();
+      if (!token) return;
+      const result = await checkPasswordExpiry();
+      if (result?.expired) {
+        toast.warning('Your password has expired. You must set a new password to continue.', { duration: 6000 });
+        navigate('/change-password?reason=expired');
+      }
+    } catch (error: any) {
+      // Non-critical — silently ignore
+      console.log('Password expiry check skipped:', error.message);
     }
   };
 
@@ -100,9 +207,35 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       setNotifications(notifications.filter(n => n.id !== notification.id));
       toast.success('Notification marked as read');
       
-      // Navigate to relevant page if notification has a link
-      if (notification.link) {
-        navigate(notification.link);
+      // Determine where to navigate
+      let targetPath = notification.link;
+      
+      // If no link provided, try to construct one based on notification type and message
+      if (!targetPath) {
+        if (notification.type.includes('order') || notification.message.includes('order')) {
+          // Try to extract order ID from message
+          const orderIdMatch = notification.message.match(/order ([a-f0-9-]+)/i);
+          if (orderIdMatch) {
+            targetPath = `/orders/${orderIdMatch[1]}`;
+          } else {
+            targetPath = '/orders';
+          }
+        } else if (notification.type.includes('approval') || notification.message.includes('approval')) {
+          targetPath = '/approvals';
+        } else if (notification.type.includes('return') || notification.message.includes('return')) {
+          targetPath = '/returns';
+        } else if (notification.type.includes('lot') || notification.message.includes('lot')) {
+          targetPath = '/lots';
+        } else if (notification.type.includes('cycle') || notification.message.includes('cycle count')) {
+          targetPath = '/cycle-counts';
+        } else if (notification.type.includes('transfer') || notification.message.includes('transfer')) {
+          targetPath = '/transfers';
+        }
+      }
+      
+      // Navigate to the target page if we have one
+      if (targetPath) {
+        navigate(targetPath);
       }
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
@@ -110,11 +243,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   const handleGoBack = () => {
-    // Check if we can go back in history
-    if (window.history.length > 1) {
+    // Use navigate(-1) to go back in browser history
+    // If there's no previous page in the app, React Router will handle it gracefully
+    try {
       navigate(-1);
-    } else {
-      // Fallback to dashboard based on role
+    } catch (error) {
+      // Fallback to dashboard based on role if navigation fails
       const role = user?.role;
       switch (role) {
         case 'admin':
@@ -155,6 +289,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         { label: 'Stock Transfers', path: '/transfers', icon: ArrowRightLeft },
         { label: 'Cycle Counts', path: '/cycle-counts', icon: ClipboardCheck },
         { label: 'All Orders', path: '/fulfillment', icon: ClipboardList },
+        { label: 'Returns', path: '/returns', icon: Undo2 },
         { label: 'Vendors', path: '/vendors', icon: Building2 },
         { label: 'Reports', path: '/reports', icon: TrendingUp },
         { label: 'Settings', path: '/settings', icon: Settings },
@@ -169,6 +304,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         { label: 'Purchase Orders', path: '/purchase-orders', icon: FileText },
         { label: 'Stock Transfers', path: '/transfers', icon: ArrowRightLeft },
         { label: 'Cycle Counts', path: '/cycle-counts', icon: ClipboardCheck },
+        { label: 'Returns', path: '/returns', icon: Undo2 },
         { label: 'Reports', path: '/reports', icon: TrendingUp },
       );
     } else if (role === 'approver') {
@@ -177,6 +313,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         { label: 'Pending Approvals', path: '/approvals', icon: CheckSquare },
         { label: 'Browse Catalog', path: '/catalog', icon: Package },
         { label: 'My Orders', path: '/orders', icon: ClipboardList },
+        { label: 'Returns', path: '/returns', icon: Undo2 },
         { label: 'My Cart', path: '/cart', icon: ShoppingCart },
       );
     } else {
@@ -184,6 +321,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         { label: 'Dashboard', path: '/requestor', icon: LayoutDashboard },
         { label: 'Browse Catalog', path: '/catalog', icon: Package },
         { label: 'My Orders', path: '/orders', icon: ClipboardList },
+        { label: 'Returns', path: '/returns', icon: Undo2 },
         { label: 'My Cart', path: '/cart', icon: ShoppingCart },
       );
     }
@@ -192,6 +330,36 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   const navItems = getNavItems();
+
+  // Helper to get badge count for a specific path
+  const getBadgeCount = (path: string, label: string) => {
+    const role = user?.role;
+    
+    // Map specific paths/labels to badge count keys
+    if (path === '/fulfillment' || label === 'All Orders') {
+      return badgeCounts.orders || 0;
+    }
+    if (path === '/approvals' || label === 'Pending Approvals') {
+      return badgeCounts.approvals || 0;
+    }
+    if (path === '/returns' || label === 'Returns') {
+      return badgeCounts.returns || 0;
+    }
+    if (path === '/purchase-orders' || label === 'Purchase Orders') {
+      return badgeCounts.purchaseOrders || 0;
+    }
+    if (path === '/cycle-counts' || label === 'Cycle Counts') {
+      return badgeCounts.cycleCounts || 0;
+    }
+    if (path === '/transfers' || label === 'Stock Transfers') {
+      return badgeCounts.transfers || 0;
+    }
+    if (path === '/orders' || label === 'My Orders') {
+      return badgeCounts.orders || 0;
+    }
+    
+    return 0;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -211,7 +379,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   <Package className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-gray-900">SHC Inventory</h1>
+                  <h1 className="text-xl font-bold text-gray-900">{appName}</h1>
                   {user && (
                     <p className="text-xs text-gray-500">
                       {user.name} • {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
@@ -263,14 +431,88 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button variant="outline" onClick={handleSignOut}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
-              </Button>
+              {isImpersonating && (
+                <Button
+                  variant="outline"
+                  onClick={handleStopImpersonating}
+                  className="flex items-center"
+                >
+                  <UserCog className="h-4 w-4 mr-2" />
+                  Stop Impersonating
+                </Button>
+              )}
+
+              {/* User profile dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center gap-2 px-3">
+                    <div className="bg-blue-100 rounded-full p-1.5">
+                      <UserIcon className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <span className="hidden sm:block text-sm font-medium text-gray-700 max-w-[120px] truncate">
+                      {user?.name || user?.email || 'Account'}
+                    </span>
+                    <ChevronDown className="h-3 w-3 text-gray-500" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="px-3 py-2 border-b">
+                    <p className="font-semibold text-sm text-gray-900 truncate">{user?.name}</p>
+                    <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                    <p className="text-xs text-blue-600 font-medium mt-0.5 capitalize">{user?.role}</p>
+                  </div>
+                  <DropdownMenuItem
+                    className="cursor-pointer flex items-center gap-2 px-3 py-2"
+                    onClick={() => navigate('/change-password')}
+                  >
+                    <KeyRound className="h-4 w-4 text-gray-500" />
+                    <span>Change Password</span>
+                  </DropdownMenuItem>
+                  <div className="border-t" />
+                  <DropdownMenuItem
+                    className="cursor-pointer flex items-center gap-2 px-3 py-2 text-red-600 focus:text-red-600"
+                    onClick={handleSignOut}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Sign Out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
       </nav>
+
+      {/* Impersonation Warning Banner */}
+      {isImpersonating && (
+        <div className="bg-orange-500 text-white sticky top-16 z-40">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-sm">
+                    Impersonation Mode Active
+                  </p>
+                  <p className="text-xs text-orange-100">
+                    Viewing as <strong>{user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Unknown'}</strong> • 
+                    Actual role: <strong>{actualRole ? actualRole.charAt(0).toUpperCase() + actualRole.slice(1) : 'Admin'}</strong>
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleStopImpersonating}
+                className="flex items-center bg-white text-orange-600 hover:bg-orange-50 flex-shrink-0"
+              >
+                <UserCog className="h-4 w-4 mr-2" />
+                Exit Impersonation
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
@@ -278,6 +520,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="px-4 py-2 space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
+              const count = getBadgeCount(item.path, item.label);
               return (
                 <Link
                   key={item.path}
@@ -286,7 +529,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   <Icon className="h-5 w-5 mr-3" />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {count > 0 && (
+                    <Badge className="ml-auto bg-red-600 text-white h-5 min-w-5 flex items-center justify-center px-1.5 text-xs">
+                      {count}
+                    </Badge>
+                  )}
                 </Link>
               );
             })}
@@ -300,6 +548,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <nav className="p-4 space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
+              const count = getBadgeCount(item.path, item.label);
               return (
                 <Link
                   key={item.path}
@@ -307,7 +556,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   className="flex items-center px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100 transition-colors"
                 >
                   <Icon className="h-5 w-5 mr-3" />
-                  <span className="font-medium">{item.label}</span>
+                  <span className="font-medium flex-1">{item.label}</span>
+                  {count > 0 && (
+                    <Badge className="ml-auto bg-red-600 text-white h-5 min-w-5 flex items-center justify-center px-1.5 text-xs">
+                      {count}
+                    </Badge>
+                  )}
                 </Link>
               );
             })}
@@ -319,14 +573,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="max-w-7xl mx-auto">
             {/* Back Button */}
             {!isDashboardPage && (
-              <div className="mb-4">
+              <div className="mb-6">
                 <Button
                   variant="ghost"
                   onClick={handleGoBack}
-                  className="flex items-center text-gray-600 hover:text-gray-900"
+                  className="flex items-center gap-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors"
+                  aria-label="Go back to previous page"
                 >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back
+                  <ArrowLeft className="h-4 w-4" />
+                  <span>Back</span>
                 </Button>
               </div>
             )}

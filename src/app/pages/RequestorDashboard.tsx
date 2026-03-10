@@ -63,7 +63,7 @@ export default function RequestorDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card 
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/my-orders')}
+            onClick={() => navigate('/orders')}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Pending Orders</CardTitle>
@@ -77,7 +77,7 @@ export default function RequestorDashboard() {
 
           <Card 
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/my-orders?status=fulfilled')}
+            onClick={() => navigate('/orders?status=fulfilled')}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Fulfilled Orders</CardTitle>
@@ -91,7 +91,7 @@ export default function RequestorDashboard() {
 
           <Card 
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/my-orders')}
+            onClick={() => navigate('/orders')}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Total Orders</CardTitle>

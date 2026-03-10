@@ -1,0 +1,203 @@
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:9630 === LOGIN ATTEMPT ===
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:9630 Email: tamirhussain@gmail.com
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:9632 === LOGIN SUCCESS ===
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:9632 Result: {success: true, accessToken: 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImFmN2VhZDAwLWEyNDctND…YxlubyprbeMZiLyu4BqPxZe6B59XNtG5aJ7rKEF7TFICtRBRg', user: {…}, debug: {…}}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:9632 Access token received: Yes (874 chars)
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:9632 User: {id: '26c7967e-9c07-4480-9c06-728941d2bf89', name: 'Tamir Hussain', role: 'admin', email: 'tamirhussain@gmail.com', createdAt: '2026-02-14T21:44:35.025Z', …}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:9632 Debug info: {tokenLength: 874, sessionStored: true, sessionVerified: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:9634 Token stored in localStorage: Yes (874 chars)
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:9634 Tokens match: true
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:7963 Fetch finished loading: POST "https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/auth/signin".
+signin @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:7963
+onSubmit @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:9631
+oD @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+sD @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+aD @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+nE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+RC @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+(anonymous) @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+cS @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+ZE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+wy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+Vv @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+ED @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14522 DashboardLayout - User loaded: tamirhussain@gmail.com Has token: true
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14530 Loading notifications...
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /notifications {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14546 Loading badge counts...
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /badge-counts {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14558 Loading app settings...
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /app-settings {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /items? {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /orders {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /stock {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /users {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /app-settings {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14560 Loaded app settings: {appName: 'IU Student Health Center Inventory System'}
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /items? {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14270 Fetch finished loading: GET "https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/items?".
+It @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14270
+Uo @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14301
+u @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14806
+(anonymous) @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14801
+sp @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+qa @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+NE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Ri @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+BM @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Is @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+b1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+fy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+sy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /stock {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /orders {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /badge-counts {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14548 Loaded badge counts: {orders: 0, returns: 0, purchaseOrders: 0, cycleCounts: 0, transfers: 0}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /notifications {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14534 Loaded 10 unread notifications
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /users {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14522 DashboardLayout - User loaded: tamirhussain@gmail.com Has token: true
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14530 Loading notifications...
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /notifications {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14546 Loading badge counts...
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /badge-counts {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14558 Loading app settings...
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /app-settings {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /users {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /categories {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /locations {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /email-settings {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /settings/requestor-categories {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14269 API Request: /app-settings {hasToken: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /locations {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /users {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /app-settings {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14560 Loaded app settings: {appName: 'IU Student Health Center Inventory System'}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /categories {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /notifications {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14534 Loaded 10 unread notifications
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /app-settings {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /settings/requestor-categories {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /email-settings {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14277 API Response: /badge-counts {status: 200, ok: true}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:14548 Loaded badge counts: {orders: 0, returns: 0, purchaseOrders: 0, cycleCounts: 0, transfers: 0}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44786 === RUN DIAGNOSTICS CALLED V2 ===
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44786 Access Token: Present (874 chars)
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44786 Current User: {id: '26c7967e-9c07-4480-9c06-728941d2bf89', name: 'Tamir Hussain', role: 'admin', email: 'tamirhussain@gmail.com', createdAt: '2026-02-14T21:44:35.025Z', …}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44786 User Role: admin
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44803 Making request to: https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/email-diagnostics
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44803 Request headers (X-SESSION-TOKEN V3): {X-Session-Token: 'eyJhbGciOiJFUzI1NiIs...'}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44806   GET https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/email-diagnostics 401 (Unauthorized)
+S @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44806
+(anonymous) @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44838
+sp @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+qa @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+NE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Ri @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+BM @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Is @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+b1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+fy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+sy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44812 Response status: 401
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44812 Response ok: false
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44814 Response body: {"code":401,"message":"Missing authorization header"}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44815  ❌ Session expired or invalid (401)
+S @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44815
+await in S
+(anonymous) @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44838
+sp @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+qa @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+NE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Ri @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+BM @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Is @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+b1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+fy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+sy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+[NEW] Explain Console errors by using Copilot in Edge: click
+         
+         to explain an error. 
+        Learn more
+        Don't show again
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44806 Fetch failed loading: GET "https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/email-diagnostics".
+S @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44806
+(anonymous) @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44838
+sp @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+qa @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+NE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Ri @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+BM @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+Is @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+b1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+fy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+sy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44763 Checking auth status at: https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/debug/auth-check
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44763 Token length: 874
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44763 Token first 30: eyJhbGciOiJFUzI1NiIsImtpZCI6Im
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44763 Token last 30: PxZe6B59XNtG5aJ7rKEF7TFICtRBRg
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44764   GET https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/debug/auth-check 401 (Unauthorized)
+v @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44764
+oD @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+sD @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+aD @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+nE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+RC @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+(anonymous) @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+cS @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+ZE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+wy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+Vv @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+ED @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44769 === AUTH STATUS CHECK RESPONSE ===
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44769 {
+  "code": 401,
+  "message": "Missing authorization header"
+}
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44764 Fetch failed loading: GET "https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/debug/auth-check".
+v @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44764
+oD @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+sD @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+aD @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+nE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+RC @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+(anonymous) @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+cS @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+ZE @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+wy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+Vv @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+ED @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:5
+8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:7979 Fetch finished loading: POST "https://hohuauquoerouetafaqn.supabase.co/functions/v1/make-server-5ec3cec0/auth/signout".
+signout @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:7979
+x @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44748
+(anonymous) @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44843
+Rc @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+Oy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+useState @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+se.useState @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+uE @ 8b2d84950784e06acf7b6ae22f23fa848af8efa7.js:44746
+nS @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:6
+hv @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+R1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+w1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+DM @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+qd @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+b1 @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:8
+fy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+sy @ sites-runtime.8b70425d68a4452fce0c06e84ff8b403fb8604776241f07610414337ec6491c4.js:1
+(index):1 [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://www.chromium.org/developers/design-documents/create-amazing-password-forms) <input type=​"password" data-slot=​"input" class=​"file:​text-foreground placeholder:​text-muted-foreground selection:​bg-primary selection:​text-primary-foreground dark:​bg-input/​30 border-input flex h-9 w-full min-w-0 rounded-md border px-3 py-1 text-base bg-input-background transition-[color,box-shadow]​ outline-none file:​inline-flex file:​h-7 file:​border-0 file:​bg-transparent file:​text-sm file:​font-medium disabled:​pointer-events-none disabled:​cursor-not-allowed disabled:​opacity-50 md:​text-sm focus-visible:​border-ring focus-visible:​ring-ring/​50 focus-visible:​ring-[3px]​ aria-invalid:​ring-destructive/​20 dark:​aria-invalid:​ring-destructive/​40 aria-invalid:​border-destructive" id=​"password" placeholder=​"••••••••" required value=​"Hurlap0p0!">​flex

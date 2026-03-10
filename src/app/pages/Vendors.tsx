@@ -7,7 +7,7 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Building2, Plus, Mail, Phone, MapPin } from 'lucide-react';
+import { Building2, Plus, Mail, Phone, MapPin, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { API_URL, getAuthHeaders } from '../services/api';
 
@@ -26,9 +26,22 @@ export default function Vendors() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [bulkVendorNames, setBulkVendorNames] = useState('');
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
 
   const [newVendor, setNewVendor] = useState({
+    name: '',
+    contactPerson: '',
+    email: '',
+    phone: '',
+    address: '',
+  });
+
+  const [editVendor, setEditVendor] = useState({
     name: '',
     contactPerson: '',
     email: '',
@@ -80,6 +93,90 @@ export default function Vendors() {
     }
   };
 
+  const handleBulkCreateVendor = async () => {
+    try {
+      if (!bulkVendorNames) {
+        toast.error('Please enter vendor names');
+        return;
+      }
+
+      setBulkLoading(true);
+
+      const vendorNames = bulkVendorNames.split('\n').map(name => name.trim()).filter(name => name);
+      const promises = vendorNames.map(name => {
+        return fetch(`${API_URL}/vendors`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ name }),
+        });
+      });
+
+      const responses = await Promise.all(promises);
+      const successfulResponses = responses.filter(response => response.ok);
+
+      if (successfulResponses.length > 0) {
+        toast.success(`${successfulResponses.length} vendors created successfully`);
+      }
+
+      if (responses.length - successfulResponses.length > 0) {
+        toast.error(`${responses.length - successfulResponses.length} vendors failed to create`);
+      }
+
+      setBulkDialogOpen(false);
+      setBulkVendorNames('');
+      setBulkLoading(false);
+      loadVendors();
+    } catch (error: any) {
+      toast.error(error.message);
+      setBulkLoading(false);
+    }
+  };
+
+  const handleEditClick = (vendor: Vendor) => {
+    setSelectedVendor(vendor);
+    setEditVendor({
+      name: vendor.name,
+      contactPerson: vendor.contactPerson || '',
+      email: vendor.email || '',
+      phone: vendor.phone || '',
+      address: vendor.address || '',
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateVendor = async () => {
+    try {
+      if (!selectedVendor) return;
+      
+      if (!editVendor.name) {
+        toast.error('Vendor name is required');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/vendors/${selectedVendor.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          name: editVendor.name,
+          contactName: editVendor.contactPerson,
+          email: editVendor.email,
+          phone: editVendor.phone,
+          address: editVendor.address,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update vendor');
+
+      toast.success('Vendor updated successfully');
+      setEditDialogOpen(false);
+      setSelectedVendor(null);
+      setEditVendor({ name: '', contactPerson: '', email: '', phone: '', address: '' });
+      loadVendors();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
   const filteredVendors = vendors.filter(vendor =>
     vendor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     vendor.contactPerson.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -96,10 +193,16 @@ export default function Vendors() {
             <h1 className="text-3xl font-bold text-gray-900">Vendors</h1>
             <p className="text-gray-600 mt-1">Manage supplier and vendor information</p>
           </div>
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Vendor
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setBulkDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Bulk Add
+            </Button>
+            <Button onClick={() => setDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Vendor
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -146,18 +249,19 @@ export default function Vendors() {
                     <TableHead>Phone</TableHead>
                     <TableHead>Address</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">
+                      <TableCell colSpan={7} className="text-center py-8">
                         Loading...
                       </TableCell>
                     </TableRow>
                   ) : filteredVendors.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">
+                      <TableCell colSpan={7} className="text-center py-8">
                         No vendors found
                       </TableCell>
                     </TableRow>
@@ -193,6 +297,16 @@ export default function Vendors() {
                           <span className={`text-xs px-2 py-1 rounded-full ${vendor.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                             {vendor.active ? 'Active' : 'Inactive'}
                           </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditClick(vendor)}
+                          >
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edit
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
@@ -263,6 +377,145 @@ export default function Vendors() {
                 Cancel
               </Button>
               <Button onClick={handleCreateVendor}>Add Vendor</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Bulk Create Vendor Dialog */}
+        <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Bulk Add Vendors</DialogTitle>
+              <DialogDescription>Register multiple suppliers or vendors at once. Contact person and email can be updated later.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label>Vendor Names (one per line) *</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const vendorList = `MCKESSON
+SHORELAND
+ProOptics
+Graston Technique
+Guy Brown
+HP PRODUCTS
+ZIMMER
+DOC SVCS
+TABCO
+LPS
+Pharmex
+LABSCO
+FOOD STORES
+MIDWEST
+FISHER
+NIKON
+EVERGREEN
+PSS
+STAPLES
+CVHP
+DOCUMENT SVC
+PRINT
+ORTHO DEPOT
+DJ ORTHO
+SAMMONS PRESTON
+TRI-HAWK
+ALIMED
+OPTP
+PERFORMANCE HEALTH - MEDCO SPORTS MEDICINE
+RBJ ATHLETICS`;
+                      setBulkVendorNames(vendorList);
+                    }}
+                  >
+                    Load Sample List
+                  </Button>
+                </div>
+                <Textarea
+                  placeholder="Enter vendor names, one per line"
+                  value={bulkVendorNames}
+                  onChange={(e) => setBulkVendorNames(e.target.value)}
+                  rows={12}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Tip: You can paste a list of vendor names here. Contact details can be added later by clicking on each vendor.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBulkDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleBulkCreateVendor} disabled={bulkLoading}>
+                {bulkLoading ? 'Adding...' : 'Add Vendors'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Vendor Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Vendor</DialogTitle>
+              <DialogDescription>Update vendor information</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Vendor Name *</Label>
+                <Input
+                  placeholder="Enter vendor name"
+                  value={editVendor.name}
+                  onChange={(e) => setEditVendor({ ...editVendor, name: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Contact Person *</Label>
+                <Input
+                  placeholder="Enter contact person name"
+                  value={editVendor.contactPerson}
+                  onChange={(e) => setEditVendor({ ...editVendor, contactPerson: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Email *</Label>
+                <Input
+                  type="email"
+                  placeholder="vendor@example.com"
+                  value={editVendor.email}
+                  onChange={(e) => setEditVendor({ ...editVendor, email: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Phone</Label>
+                <Input
+                  type="tel"
+                  placeholder="+1 (555) 123-4567"
+                  value={editVendor.phone}
+                  onChange={(e) => setEditVendor({ ...editVendor, phone: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Address</Label>
+                <Textarea
+                  placeholder="Enter vendor address"
+                  value={editVendor.address}
+                  onChange={(e) => setEditVendor({ ...editVendor, address: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateVendor}>Update Vendor</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

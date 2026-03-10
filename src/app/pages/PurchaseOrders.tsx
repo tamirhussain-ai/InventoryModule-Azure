@@ -8,8 +8,9 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { FileText, Plus, Package, CheckCircle, Clock, XCircle, Eye } from 'lucide-react';
+import { FileText, Plus, Package, CheckCircle, Clock, XCircle, Eye, Edit, Trash2, MoreVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { API_URL, getAuthHeaders } from '../services/api';
 
@@ -37,13 +38,28 @@ export default function PurchaseOrders() {
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [receiveDialogOpen, setReceiveDialogOpen] = useState(false);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [newStatus, setNewStatus] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [receiveQuantities, setReceiveQuantities] = useState<{ [key: string]: number }>({});
 
   // Form state for creating PO
   const [newPO, setNewPO] = useState({
+    customPONumber: '',
     vendorId: '',
     expectedDate: '',
+    items: [] as Array<{ itemId: string; quantity: number }>,
+  });
+
+  // Form state for editing PO
+  const [editPO, setEditPO] = useState({
+    customPONumber: '',
+    vendorId: '',
+    expectedDate: '',
+    status: '',
     items: [] as Array<{ itemId: string; quantity: number }>,
   });
 
@@ -63,9 +79,26 @@ export default function PurchaseOrders() {
       const vendorsData = await vendorsRes.json();
       const itemsData = await itemsRes.json();
 
-      setOrders(ordersData.purchaseOrders || []);
-      setVendors(vendorsData.vendors || []);
-      setItems(itemsData.items || []);
+      const vendorsList = vendorsData.vendors || [];
+      const itemsList = itemsData.items || [];
+      
+      // Create lookup maps for quick access
+      const vendorMap = new Map(vendorsList.map((v: any) => [v.id, v.name]));
+      const itemMap = new Map(itemsList.map((i: any) => [i.id, i]));
+
+      // Enrich purchase orders with vendor and item names
+      const enrichedOrders = (ordersData.purchaseOrders || []).map((po: any) => ({
+        ...po,
+        vendorName: vendorMap.get(po.vendorId) || 'Unknown Vendor',
+        items: (po.items || []).map((item: any) => ({
+          ...item,
+          itemName: itemMap.get(item.itemId)?.name || 'Unknown Item',
+        })),
+      }));
+
+      setOrders(enrichedOrders);
+      setVendors(vendorsList);
+      setItems(itemsList);
     } catch (error: any) {
       toast.error('Failed to load purchase orders');
       console.error(error);
@@ -91,30 +124,142 @@ export default function PurchaseOrders() {
 
       toast.success('Purchase order created successfully');
       setCreateDialogOpen(false);
-      setNewPO({ vendorId: '', expectedDate: '', items: [] });
+      setNewPO({ customPONumber: '', vendorId: '', expectedDate: '', items: [] });
       loadData();
     } catch (error: any) {
       toast.error(error.message);
     }
   };
 
-  const handleReceivePO = async (poId: string, receivedItems: any[]) => {
+  const handleReceivePO = async (poId: string, poItems: any[]) => {
     try {
+      console.log('Receiving PO:', { poId, receiveQuantities });
+      
+      // Build receivedItems array from receiveQuantities
+      const receivedItems = poItems
+        .map(item => ({
+          itemId: item.itemId,
+          itemName: item.itemName,
+          quantityReceived: receiveQuantities[item.itemId] || 0,
+          condition: 'good',
+        }))
+        .filter(item => item.quantityReceived > 0);
+
+      if (receivedItems.length === 0) {
+        toast.error('Please enter at least one quantity to receive');
+        return;
+      }
+
+      console.log('Request URL:', `${API_URL}/purchase-orders/${poId}/receive`);
+      console.log('Sending items:', receivedItems);
+
       const response = await fetch(`${API_URL}/purchase-orders/${poId}/receive`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ receivedItems }),
+        body: JSON.stringify({ items: receivedItems }),
       });
 
-      if (!response.ok) throw new Error('Failed to receive PO');
+      console.log('Receive PO response:', { status: response.status, ok: response.ok });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Receive PO error:', errorData);
+        throw new Error(`Failed to receive PO: ${errorData}`);
+      }
 
       toast.success('Purchase order received successfully');
       setReceiveDialogOpen(false);
+      setSelectedPO(null);
+      setReceiveQuantities({});
+      loadData();
+    } catch (error: any) {
+      console.error('Receive PO exception:', error);
+      toast.error(error.message || 'Failed to receive PO');
+    }
+  };
+
+  const handleViewPO = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setViewDialogOpen(true);
+  };
+
+  const handleEditPO = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setEditPO({
+      customPONumber: po.poNumber,
+      vendorId: po.vendorId,
+      expectedDate: po.expectedDate.split('T')[0],
+      status: po.status,
+      items: po.items.map(item => ({
+        itemId: item.itemId,
+        quantity: item.quantity,
+      })),
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdatePO = async () => {
+    try {
+      if (!selectedPO) return;
+      
+      if (!editPO.vendorId || !editPO.expectedDate || editPO.items.length === 0) {
+        toast.error('Please fill all required fields');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/purchase-orders/${selectedPO.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(editPO),
+      });
+
+      if (!response.ok) throw new Error('Failed to update PO');
+
+      toast.success('Purchase order updated successfully');
+      setEditDialogOpen(false);
       setSelectedPO(null);
       loadData();
     } catch (error: any) {
       toast.error(error.message);
     }
+  };
+
+  const handleStatusChange = async () => {
+    try {
+      if (!selectedPO || !newStatus) return;
+
+      console.log('Changing PO status:', { poId: selectedPO.id, newStatus });
+      console.log('Request URL:', `${API_URL}/purchase-orders/${selectedPO.id}/status`);
+
+      const response = await fetch(`${API_URL}/purchase-orders/${selectedPO.id}/status`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      console.log('Status change response:', { status: response.status, ok: response.ok });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Status change error:', errorData);
+        throw new Error(`Failed to update PO status: ${errorData}`);
+      }
+
+      toast.success('Purchase order status updated successfully');
+      setStatusDialogOpen(false);
+      setSelectedPO(null);
+      setNewStatus('');
+      loadData();
+    } catch (error: any) {
+      console.error('Status change exception:', error);
+      toast.error(error.message || 'Failed to update PO status');
+    }
+  };
+
+  const openStatusDialog = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setNewStatus(po.status);
+    setStatusDialogOpen(true);
   };
 
   const addItemToPO = () => {
@@ -134,6 +279,26 @@ export default function PurchaseOrders() {
     setNewPO({
       ...newPO,
       items: newPO.items.filter((_, i) => i !== index),
+    });
+  };
+
+  const addItemToEditPO = () => {
+    setEditPO({
+      ...editPO,
+      items: [...editPO.items, { itemId: '', quantity: 0 }],
+    });
+  };
+
+  const updateEditPOItem = (index: number, field: string, value: any) => {
+    const updatedItems = [...editPO.items];
+    updatedItems[index] = { ...updatedItems[index], [field]: value };
+    setEditPO({ ...editPO, items: updatedItems });
+  };
+
+  const removeEditPOItem = (index: number) => {
+    setEditPO({
+      ...editPO,
+      items: editPO.items.filter((_, i) => i !== index),
     });
   };
 
@@ -282,9 +447,22 @@ export default function PurchaseOrders() {
                         <TableCell>{new Date(po.createdAt).toLocaleDateString()}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end space-x-2">
-                            <Button variant="outline" size="sm">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleViewPO(po)}
+                            >
                               <Eye className="h-4 w-4" />
                             </Button>
+                            {(po.status === 'draft' || po.status === 'submitted') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditPO(po)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            )}
                             {(po.status === 'approved' || po.status === 'submitted') && (
                               <Button
                                 size="sm"
@@ -297,6 +475,18 @@ export default function PurchaseOrders() {
                                 Receive
                               </Button>
                             )}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openStatusDialog(po)}>
+                                  Change Status
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -316,6 +506,18 @@ export default function PurchaseOrders() {
               <DialogDescription>Create a new purchase order for inventory replenishment</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
+              <div>
+                <Label>Custom PO Number (Optional)</Label>
+                <Input
+                  placeholder="Leave blank for auto-generated PO number"
+                  value={newPO.customPONumber}
+                  onChange={(e) => setNewPO({ ...newPO, customPONumber: e.target.value })}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  If left blank, system will auto-generate a PO number
+                </p>
+              </div>
+
               <div>
                 <Label>Vendor</Label>
                 <Select value={newPO.vendorId} onValueChange={(value) => setNewPO({ ...newPO, vendorId: value })}>
@@ -397,7 +599,7 @@ export default function PurchaseOrders() {
         </Dialog>
 
         {/* Receive PO Dialog */}
-        {selectedPO && (
+        {selectedPO && receiveDialogOpen && (
           <Dialog open={receiveDialogOpen} onOpenChange={setReceiveDialogOpen}>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
@@ -421,7 +623,13 @@ export default function PurchaseOrders() {
                         type="number"
                         className="w-24"
                         placeholder="Qty"
+                        min={0}
                         max={item.quantity - item.received}
+                        value={receiveQuantities[item.itemId] || ''}
+                        onChange={(e) => setReceiveQuantities({
+                          ...receiveQuantities,
+                          [item.itemId]: parseInt(e.target.value) || 0
+                        })}
                       />
                     </div>
                   ))}
@@ -431,8 +639,239 @@ export default function PurchaseOrders() {
                 <Button variant="outline" onClick={() => setReceiveDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => handleReceivePO(selectedPO.id, [])}>
+                <Button onClick={() => handleReceivePO(selectedPO.id, selectedPO.items)}>
                   Receive Items
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* View PO Dialog */}
+        {selectedPO && viewDialogOpen && (
+          <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Purchase Order Details</DialogTitle>
+                <DialogDescription>PO: {selectedPO.poNumber}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-gray-600">Vendor</Label>
+                    <p className="font-medium">{selectedPO.vendorName}</p>
+                  </div>
+                  <div>
+                    <Label className="text-gray-600">Status</Label>
+                    <div className="mt-1">{getStatusBadge(selectedPO.status)}</div>
+                  </div>
+                  <div>
+                    <Label className="text-gray-600">Expected Date</Label>
+                    <p className="font-medium">{new Date(selectedPO.expectedDate).toLocaleDateString()}</p>
+                  </div>
+                  <div>
+                    <Label className="text-gray-600">Created Date</Label>
+                    <p className="font-medium">{new Date(selectedPO.createdAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-gray-600 mb-2 block">Items</Label>
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Item</TableHead>
+                          <TableHead className="text-right">Ordered</TableHead>
+                          <TableHead className="text-right">Received</TableHead>
+                          <TableHead className="text-right">Remaining</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedPO.items.map((item, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="font-medium">{item.itemName}</TableCell>
+                            <TableCell className="text-right">{item.quantity}</TableCell>
+                            <TableCell className="text-right">{item.received}</TableCell>
+                            <TableCell className="text-right">{item.quantity - item.received}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setViewDialogOpen(false)}>
+                  Close
+                </Button>
+                {(selectedPO.status === 'draft' || selectedPO.status === 'submitted') && (
+                  <Button onClick={() => {
+                    setViewDialogOpen(false);
+                    handleEditPO(selectedPO);
+                  }}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit PO
+                  </Button>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Edit PO Dialog */}
+        {selectedPO && editDialogOpen && (
+          <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Edit Purchase Order</DialogTitle>
+                <DialogDescription>Modify purchase order: {selectedPO.poNumber}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>PO Number</Label>
+                  <Input
+                    value={editPO.customPONumber}
+                    onChange={(e) => setEditPO({ ...editPO, customPONumber: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <Label>Vendor</Label>
+                  <Select value={editPO.vendorId} onValueChange={(value) => setEditPO({ ...editPO, vendorId: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select vendor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vendors.map((vendor) => (
+                        <SelectItem key={vendor.id} value={vendor.id}>
+                          {vendor.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Expected Delivery Date</Label>
+                  <Input
+                    type="date"
+                    value={editPO.expectedDate}
+                    onChange={(e) => setEditPO({ ...editPO, expectedDate: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <Label>Status</Label>
+                  <Select value={editPO.status} onValueChange={(value) => setEditPO({ ...editPO, status: value })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="submitted">Submitted</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="received">Received</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <Label>Items</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addItemToEditPO}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Item
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {editPO.items.map((item, index) => (
+                      <div key={index} className="flex space-x-2">
+                        <Select
+                          value={item.itemId}
+                          onValueChange={(value) => updateEditPOItem(index, 'itemId', value)}
+                        >
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Select item" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {items.map((i) => (
+                              <SelectItem key={i.id} value={i.id}>
+                                {i.name} - {i.sku}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          placeholder="Quantity"
+                          className="w-32"
+                          value={item.quantity || ''}
+                          onChange={(e) => updateEditPOItem(index, 'quantity', parseInt(e.target.value) || 0)}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => removeEditPOItem(index)}
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleUpdatePO}>
+                  Update Purchase Order
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Change Status Dialog */}
+        {selectedPO && statusDialogOpen && (
+          <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Change Purchase Order Status</DialogTitle>
+                <DialogDescription>
+                  Update status for PO: {selectedPO.poNumber}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>Current Status</Label>
+                  <div className="mt-2">{getStatusBadge(selectedPO.status)}</div>
+                </div>
+                <div>
+                  <Label>New Status</Label>
+                  <Select value={newStatus} onValueChange={setNewStatus}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="submitted">Submitted</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="received">Received</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setStatusDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleStatusChange}>
+                  Update Status
                 </Button>
               </DialogFooter>
             </DialogContent>
