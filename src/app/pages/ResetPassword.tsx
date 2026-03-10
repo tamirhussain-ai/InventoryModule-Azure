@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -6,7 +6,20 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { toast } from 'sonner';
 import { Package, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient';
+import { AuthService } from '../services/auth';
+
+function extractResetToken(): string | null {
+  const url = new URL(window.location.href);
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+
+  return (
+    url.searchParams.get('token') ||
+    url.searchParams.get('code') ||
+    hashParams.get('token') ||
+    hashParams.get('code') ||
+    hashParams.get('access_token')
+  );
+}
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -17,105 +30,30 @@ export default function ResetPassword() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [linkError, setLinkError] = useState(false);
-  const sessionEstablished = useRef(false);
+  const [resetToken, setResetToken] = useState<string | null>(null);
 
   useEffect(() => {
-    // -----------------------------------------------------------------------
-    // Supabase v2 uses PKCE by default → reset link arrives as ?code=XXXXX
-    // Older / explicit implicit flow → tokens arrive as #access_token=...
-    // We handle BOTH plus the onAuthStateChange PASSWORD_RECOVERY event.
-    // -----------------------------------------------------------------------
+    const token = extractResetToken();
 
-    const markReady = () => {
-      if (sessionEstablished.current) return;
-      sessionEstablished.current = true;
-      setSessionReady(true);
-      // Strip sensitive tokens/code from the URL bar
-      window.history.replaceState(null, '', window.location.pathname);
-    };
-
-    const markError = (msg?: string) => {
-      if (sessionEstablished.current) return;
-      console.error('[ResetPassword] Link error:', msg);
+    if (!token) {
       setLinkError(true);
-      toast.error(msg || 'Invalid or expired reset link. Please request a new one.');
+      toast.error('No valid reset link found. Please request a new password reset.');
       setTimeout(() => navigate('/forgot-password'), 3000);
-    };
-
-    // 1. Subscribe to auth state changes — fires for both PKCE & implicit flows
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[ResetPassword] Auth event:', event, '| session:', !!session);
-      if (event === 'PASSWORD_RECOVERY') {
-        markReady();
-      }
-    });
-
-    // 2. Parse the current URL for tokens
-    const url = new URL(window.location.href);
-    const code = url.searchParams.get('code');                           // PKCE
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const accessToken = hashParams.get('access_token');                  // implicit
-    const refreshToken = hashParams.get('refresh_token');
-    const type = hashParams.get('type');
-
-    console.log('[ResetPassword] code:', !!code, '| access_token:', !!accessToken, '| type:', type);
-
-    if (code) {
-      // PKCE flow — exchange the one-time code for a session
-      console.log('[ResetPassword] Exchanging PKCE code for session…');
-      supabase.auth.exchangeCodeForSession(code)
-        .then(({ data, error }) => {
-          if (error) {
-            console.error('[ResetPassword] exchangeCodeForSession error:', error);
-            markError('Invalid or expired reset link. Please request a new one.');
-          } else {
-            console.log('[ResetPassword] Code exchange OK — waiting for PASSWORD_RECOVERY event');
-            // PASSWORD_RECOVERY onAuthStateChange fires next; markReady() handles it.
-            // Safety net in case the event was already consumed before subscription:
-            if (!sessionEstablished.current) markReady();
-          }
-        });
-
-    } else if (accessToken && refreshToken) {
-      // Implicit flow — set session directly
-      console.log('[ResetPassword] Setting session from hash tokens…');
-      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
-        .then(({ error }) => {
-          if (error) {
-            console.error('[ResetPassword] setSession error:', error);
-            markError('Invalid or expired reset link. Please request a new one.');
-          } else {
-            console.log('[ResetPassword] Session set OK');
-            markReady();
-          }
-        });
-
-    } else {
-      // No explicit tokens — Supabase may have auto-processed the URL before this
-      // component mounted (detectSessionInUrl=true). Check for an existing session.
-      console.warn('[ResetPassword] No code or tokens in URL — checking existing session');
-      const timeout = setTimeout(async () => {
-        if (sessionEstablished.current) return;
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          console.log('[ResetPassword] Found existing session via getSession()');
-          markReady();
-        } else {
-          markError('No valid reset link found. Please request a new password reset.');
-        }
-      }, 800);
-
-      return () => {
-        clearTimeout(timeout);
-        subscription.unsubscribe();
-      };
+      return;
     }
 
-    return () => subscription.unsubscribe();
+    setResetToken(token);
+    setSessionReady(true);
+    window.history.replaceState(null, '', window.location.pathname);
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!resetToken) {
+      toast.error('Missing reset token. Please request a new password reset.');
+      return;
+    }
 
     if (password.length < 6) {
       toast.error('Password must be at least 6 characters');
@@ -130,17 +68,8 @@ export default function ResetPassword() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({ password });
-
-      if (error) {
-        console.error('[ResetPassword] updateUser error:', error);
-        throw new Error(error.message);
-      }
-
-      console.log('[ResetPassword] Password updated successfully');
+      await AuthService.resetPassword(resetToken, password);
       toast.success('Password reset successfully!');
-
-      await supabase.auth.signOut();
       setTimeout(() => navigate('/login'), 1500);
     } catch (error: any) {
       console.error('[ResetPassword] Error:', error);

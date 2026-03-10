@@ -4,7 +4,7 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { AlertCircle, CheckCircle, XCircle, RefreshCw, LogOut, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { API_BASE_URL, createGatewayHeaders } from '../config/azure';
 import { AuthService } from '../services/auth';
 import { useNavigate } from 'react-router';
 
@@ -35,8 +35,7 @@ export default function EmailDiagnostics() {
     console.log('Token value (first 50 chars):', token ? token.substring(0, 50) : 'N/A');
     console.log('Current User:', user);
     console.log('User Role:', user?.role);
-    console.log('ProjectId:', projectId);
-    console.log('API URL:', `https://${projectId}.supabase.co/functions/v1/make-server-5ec3cec0/email-diagnostics`);
+    console.log('API URL:', `${API_BASE_URL}/email-diagnostics`);
     
     if (!token) {
       toast.error('No access token found. Please log in again.');
@@ -57,7 +56,7 @@ export default function EmailDiagnostics() {
         return;
       }
 
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-5ec3cec0/debug/auth-check?token=${encodeURIComponent(accessToken)}`;
+      const url = `${API_BASE_URL}/debug/auth-check?token=${encodeURIComponent(accessToken)}`;
       console.log('Checking auth status at:', url.replace(accessToken, '***TOKEN***'));
       console.log('Token length:', accessToken.length);
       console.log('Token first 30:', accessToken.substring(0, 30));
@@ -65,7 +64,7 @@ export default function EmailDiagnostics() {
       
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
+          ...createGatewayHeaders(),
         },
       });
 
@@ -90,12 +89,12 @@ export default function EmailDiagnostics() {
 
   const testKVStore = async () => {
     try {
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-5ec3cec0/debug/kv-test`;
+      const url = `${API_BASE_URL}/debug/kv-test`;
       console.log('Testing KV store at:', url);
       
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
+          ...createGatewayHeaders(),
         },
       });
       const data = await response.json();
@@ -156,15 +155,15 @@ export default function EmailDiagnostics() {
         return;
       }
       
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-5ec3cec0/email-diagnostics?token=${encodeURIComponent(accessToken)}`;
+      const url = `${API_BASE_URL}/email-diagnostics?token=${encodeURIComponent(accessToken)}`;
       console.log('Making request to:', url.replace(accessToken, '***TOKEN***'));
       console.log('Request method: GET with token in query parameter AND Authorization header');
-      console.log('Authorization header: Bearer ${publicAnonKey}');
+      console.log('Authorization header configured:', !!Object.keys(createGatewayHeaders()).length);
       
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
+          ...createGatewayHeaders(),
         },
       });
 

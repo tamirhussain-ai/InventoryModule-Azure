@@ -6,9 +6,9 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { toast } from 'sonner';
 import { Package, ArrowLeft, CheckCircle, AlertTriangle } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient';
+import { AuthService } from '../services/auth';
 
-// Minimum seconds between reset email sends to respect Supabase rate limits
+// Minimum seconds between reset email sends to respect upstream rate limits
 const COOLDOWN_SECONDS = 60;
 
 export default function ForgotPassword() {
@@ -40,26 +40,10 @@ export default function ForgotPassword() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-
-      if (error) {
-        // Rate limit: give a clear, actionable message
-        if (
-          error.message.toLowerCase().includes('rate limit') ||
-          error.message.toLowerCase().includes('too many') ||
-          error.status === 429
-        ) {
-          toast.error(
-            'Too many reset emails sent. Please wait a minute before trying again.',
-            { duration: 6000 }
-          );
-          startCooldown();
-          return;
-        }
-        throw error;
-      }
+      await AuthService.requestPasswordReset(
+        email,
+        `${window.location.origin}/reset-password`
+      );
 
       console.log('Password reset email dispatched for:', email);
       setSubmitted(true);
@@ -112,13 +96,13 @@ export default function ForgotPassword() {
                   <p className="text-xs text-amber-800 font-medium">Not seeing the email? Check these:</p>
                 </div>
                 <ul className="text-xs text-amber-700 space-y-1 ml-6 list-disc">
-                  <li>Look in your <strong>spam / junk</strong> folder — Supabase emails are often filtered.</li>
+                  <li>Look in your <strong>spam / junk</strong> folder — your email system may filter automated messages.</li>
                   <li>
-                    In <strong>Supabase Dashboard → Authentication → URL Configuration</strong>, confirm{' '}
+                    In your <strong>Azure authentication or API configuration</strong>, confirm{' '}
                     <code className="bg-amber-100 px-1 rounded">{window.location.origin}/reset-password</code>{' '}
                     is listed under <em>Redirect URLs</em>. Without this, the link will not work.
                   </li>
-                  <li>Supabase free tier allows <strong>4 reset emails per hour</strong>. Wait a minute if you've sent several.</li>
+                  <li>Your tenant may enforce reset-rate limits. Wait a minute if you've sent several requests.</li>
                   <li>Make sure the email address belongs to a registered account.</li>
                 </ul>
               </div>

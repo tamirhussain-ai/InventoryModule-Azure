@@ -1,6 +1,6 @@
-import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { API_BASE_URL, createGatewayHeaders } from '../config/azure';
 
-const API_URL = `https://${projectId}.supabase.co/functions/v1/make-server-5ec3cec0`;
+const API_URL = API_BASE_URL;
 
 export interface User {
   id: string;
@@ -19,7 +19,7 @@ export class AuthService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${publicAnonKey}`,
+        ...createGatewayHeaders(),
       },
       body: JSON.stringify({ email, password, name, role, department }),
     });
@@ -37,7 +37,7 @@ export class AuthService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${publicAnonKey}`,
+        ...createGatewayHeaders(),
       },
       body: JSON.stringify({ email, password }),
     });
@@ -63,7 +63,7 @@ export class AuthService {
         await fetch(`${API_URL}/auth/signout`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
+            ...createGatewayHeaders(),
             'X-Session-Token': token,
           },
         });
@@ -107,7 +107,7 @@ export class AuthService {
     try {
       const response = await fetch(`${API_URL}/auth/session`, {
         headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
+          ...createGatewayHeaders(),
           ...(token ? { 'X-Session-Token': token } : {}),
         },
       });
@@ -126,4 +126,41 @@ export class AuthService {
       return null;
     }
   }
+
+  static async requestPasswordReset(email: string, redirectTo: string) {
+    const response = await fetch(`${API_URL}/auth/forgot-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...createGatewayHeaders(),
+      },
+      body: JSON.stringify({ email, redirectTo }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to request password reset');
+    }
+
+    return data;
+  }
+
+  static async resetPassword(token: string, password: string) {
+    const response = await fetch(`${API_URL}/auth/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...createGatewayHeaders(),
+      },
+      body: JSON.stringify({ token, password }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to reset password');
+    }
+
+    return data;
+  }
+
 }
