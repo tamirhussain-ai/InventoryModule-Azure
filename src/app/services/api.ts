@@ -1,13 +1,13 @@
-import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { API_BASE_URL, createGatewayHeaders } from '../config/azure';
 import { AuthService } from './auth';
 
-export const API_URL = `https://${projectId}.supabase.co/functions/v1/make-server-5ec3cec0`;
+export const API_URL = API_BASE_URL;
 
 export function getAuthHeaders() {
   const token = AuthService.getAccessToken();
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${publicAnonKey}`,
+    ...createGatewayHeaders(),
     ...(token ? { 'X-Session-Token': token } : {}),
   };
 }
@@ -106,7 +106,7 @@ export async function uploadProductImage(file: File) {
     const response = await fetch(`${API_URL}/upload-product-image`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${publicAnonKey}`,
+        ...createGatewayHeaders(),
         ...(token ? { 'X-Session-Token': token } : {}),
       },
       body: formData,

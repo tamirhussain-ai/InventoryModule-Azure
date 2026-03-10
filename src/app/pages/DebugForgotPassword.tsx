@@ -5,7 +5,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Package, ArrowLeft, CheckCircle, AlertCircle, Info } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient';
+import { AuthService } from '../services/auth';
 
 interface TestResult {
   success: boolean;
@@ -33,14 +33,13 @@ export default function DebugForgotPassword() {
     console.log('redirectTo:', redirectTo);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      await AuthService.requestPasswordReset(email, redirectTo);
 
       const durationMs = Date.now() - start;
-      console.log('Result — error:', error, '| duration:', durationMs, 'ms');
+      console.log('Result — success | duration:', durationMs, 'ms');
 
       setResult({
-        success: !error,
-        error: error?.message,
+        success: true,
         durationMs,
         redirectTo,
         timestamp: new Date().toISOString(),
@@ -71,7 +70,7 @@ export default function DebugForgotPassword() {
                   Debug: Forgot Password
                 </CardTitle>
                 <CardDescription>
-                  Tests <code>supabase.auth.resetPasswordForEmail()</code> directly from the browser
+                  Tests <code>POST /auth/forgot-password</code> through the Azure-hosted API
                 </CardDescription>
               </div>
               <Button asChild variant="outline">
@@ -127,10 +126,10 @@ export default function DebugForgotPassword() {
                     <li>Check your <strong>inbox and spam/junk</strong> folder for the reset email.</li>
                     <li>
                       Verify <code className="bg-green-200 px-1 rounded">{result.redirectTo}</code> is in{' '}
-                      <strong>Supabase Dashboard → Auth → URL Configuration → Redirect URLs</strong>.
+                      <strong>Azure auth app registration or API redirect URL allow-list</strong>.
                       If it's missing, the email link will be blocked or won't work.
                     </li>
-                    <li>Supabase free tier caps reset emails at <strong>4 per hour</strong>.</li>
+                    <li>Your tenant might enforce reset-rate limits.</li>
                     <li>Click the link in the email — it should land on <code className="bg-green-200 px-1 rounded">/reset-password?code=…</code></li>
                   </ol>
                 </div>
@@ -139,12 +138,12 @@ export default function DebugForgotPassword() {
           </Card>
         )}
 
-        {/* Supabase setup checklist */}
+        {/* Azure setup checklist */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Info className="h-5 w-5 text-blue-500" />
-              Supabase Setup Checklist
+              Azure Setup Checklist
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -152,33 +151,25 @@ export default function DebugForgotPassword() {
               <li className="flex items-start gap-2">
                 <span className="font-bold text-blue-600 shrink-0">1.</span>
                 <span>
-                  <strong>Redirect URL whitelist</strong> — In Supabase Dashboard go to{' '}
-                  <em>Authentication → URL Configuration → Redirect URLs</em> and add{' '}
-                  <code className="bg-gray-100 px-1 rounded text-xs">{window.location.origin}/reset-password</code>.
-                  Without this Supabase will reject the <code>redirectTo</code> in the email link.
+                  <strong>Redirect URL allow-list</strong> — In your Azure auth app registration or identity platform, add <code className="bg-gray-100 px-1 rounded text-xs">{window.location.origin}/reset-password</code> to allowed redirect URIs so reset links can return to this app.
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="font-bold text-blue-600 shrink-0">2.</span>
                 <span>
-                  <strong>Site URL</strong> — Verify <em>Authentication → URL Configuration → Site URL</em> is set to{' '}
-                  <code className="bg-gray-100 px-1 rounded text-xs">{window.location.origin}</code>.
+                  <strong>Frontend origin</strong> — Ensure <code className="bg-gray-100 px-1 rounded text-xs">{window.location.origin}</code> is trusted by your Azure API CORS configuration.
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="font-bold text-blue-600 shrink-0">3.</span>
                 <span>
-                  <strong>Email provider</strong> — On the Supabase free tier the built-in SMTP
-                  is limited to 4 emails/hour and emails often land in spam. Consider configuring a
-                  custom SMTP provider under <em>Authentication → Email</em> for better deliverability.
+                  <strong>Email provider</strong> — Configure your Azure-backed email flow (for example Azure Communication Services + Email) and confirm sender domain verification for better deliverability.
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="font-bold text-blue-600 shrink-0">4.</span>
                 <span>
-                  <strong>Auth flow</strong> — This app uses Supabase's default <strong>PKCE</strong> flow.
-                  The reset link will arrive as <code className="bg-gray-100 px-1 rounded text-xs">/reset-password?code=…</code>{' '}
-                  (not a hash fragment). The <code>/reset-password</code> page now handles this correctly.
+                  <strong>Token format</strong> — The reset page accepts <code className="bg-gray-100 px-1 rounded text-xs">token</code>, <code className="bg-gray-100 px-1 rounded text-xs">code</code>, and <code className="bg-gray-100 px-1 rounded text-xs">access_token</code> URL params for compatibility across identity providers.
                 </span>
               </li>
             </ul>
