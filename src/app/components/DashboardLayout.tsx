@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { AuthService, User } from '../services/auth';
+import { useAuth } from '../../lib/authContext';
 import { getNotifications, markNotificationRead, getBadgeCounts, getAppSettings, checkPasswordExpiry } from '../services/api';
 import { 
   Package, 
@@ -46,6 +47,7 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout: msalLogout } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [badgeCounts, setBadgeCounts] = useState<any>({});
@@ -192,9 +194,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const handleSignOut = async () => {
     try {
-      await AuthService.signout();
+      await msalLogout();
       toast.success('Signed out successfully');
-      navigate('/');
     } catch (error) {
       toast.error('Sign out failed');
     }

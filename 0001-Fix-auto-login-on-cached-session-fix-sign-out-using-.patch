@@ -1,0 +1,183 @@
+From 367382c45d2edebfa6b6da8418225cff19be9e54 Mon Sep 17 00:00:00 2001
+From: tamirhussain-ai <tamirhussain@users.noreply.github.com>
+Date: Wed, 11 Mar 2026 23:08:49 +0000
+Subject: [PATCH] Fix: auto-login on cached session, fix sign out using MSAL
+ logout
+
+---
+ src/app/components/DashboardLayout.tsx |  5 +-
+ src/lib/authContext.tsx                | 71 +++++++++++++-------------
+ 2 files changed, 38 insertions(+), 38 deletions(-)
+
+diff --git a/src/app/components/DashboardLayout.tsx b/src/app/components/DashboardLayout.tsx
+index 68bcd87..5c74f82 100644
+--- a/src/app/components/DashboardLayout.tsx
++++ b/src/app/components/DashboardLayout.tsx
+@@ -9,6 +9,7 @@ import {
+   DropdownMenuTrigger,
+ } from './ui/dropdown-menu';
+ import { AuthService, User } from '../services/auth';
++import { useAuth } from '../../lib/authContext';
+ import { getNotifications, markNotificationRead, getBadgeCounts, getAppSettings, checkPasswordExpiry } from '../services/api';
+ import { 
+   Package, 
+@@ -46,6 +47,7 @@ interface DashboardLayoutProps {
+ export default function DashboardLayout({ children }: DashboardLayoutProps) {
+   const navigate = useNavigate();
+   const location = useLocation();
++  const { logout: msalLogout } = useAuth();
+   const [user, setUser] = useState<User | null>(null);
+   const [notifications, setNotifications] = useState<any[]>([]);
+   const [badgeCounts, setBadgeCounts] = useState<any>({});
+@@ -192,9 +194,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
+ 
+   const handleSignOut = async () => {
+     try {
+-      await AuthService.signout();
++      await msalLogout();
+       toast.success('Signed out successfully');
+-      navigate('/');
+     } catch (error) {
+       toast.error('Sign out failed');
+     }
+diff --git a/src/lib/authContext.tsx b/src/lib/authContext.tsx
+index cfa3295..1f2f7fe 100644
+--- a/src/lib/authContext.tsx
++++ b/src/lib/authContext.tsx
+@@ -14,8 +14,7 @@ export interface AppUser {
+   department?: string;
+ }
+ 
+-// ─── Allowlist helpers (stored in localStorage for Phase 1) ──────────────────
+-// In Phase 2 this moves to the database.
++// ─── Allowlist helpers ────────────────────────────────────────────────────────
+ const ALLOWLIST_KEY = 'shc_allowed_emails';
+ 
+ export interface AllowedUser {
+@@ -44,17 +43,12 @@ export function isEmailAllowed(email: string): AllowedUser | null {
+ export function addAllowedUser(user: AllowedUser) {
+   const list = getAllowedUsers();
+   const exists = list.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
+-  if (exists >= 0) {
+-    list[exists] = user; // update existing
+-  } else {
+-    list.push(user);
+-  }
++  if (exists >= 0) { list[exists] = user; } else { list.push(user); }
+   saveAllowedUsers(list);
+ }
+ 
+ export function removeAllowedUser(email: string) {
+-  const list = getAllowedUsers().filter(u => u.email.toLowerCase() !== email.toLowerCase());
+-  saveAllowedUsers(list);
++  saveAllowedUsers(getAllowedUsers().filter(u => u.email.toLowerCase() !== email.toLowerCase()));
+ }
+ 
+ // ─── Types ────────────────────────────────────────────────────────────────────
+@@ -88,43 +82,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+   const [isAccessDenied, setIsAccessDenied] = useState(false);
+ 
+   useEffect(() => {
+-    const init = async () => {
+-      await msalInstance.initialize();
+-      await msalInstance.handleRedirectPromise();
+-      const accounts = msalInstance.getAllAccounts();
+-      if (accounts.length > 0) {
+-        const account = accounts[0];
+-        setMsalAccount(account);
+-        await hydrateAppUser(account);
+-      }
++    // msalInstance is already initialized in main.tsx before render
++    const accounts = msalInstance.getAllAccounts();
++    if (accounts.length > 0) {
++      const account = accounts[0];
++      setMsalAccount(account);
++      hydrateAppUser(account);
++    } else {
+       setIsLoading(false);
+-    };
+-    init().catch(() => setIsLoading(false));
++    }
+   }, []);
+ 
+   const hydrateAppUser = async (account: AccountInfo) => {
+     const email = account.username;
+-
+-    // ── Check allowlist ───────────────────────────────────────────────────
+-    const allowedEntry = isEmailAllowed(email);
+-
+-    // Bootstrap: if allowlist is completely empty, the first user becomes admin
+     const allUsers = getAllowedUsers();
++
++    // Bootstrap: first ever login becomes admin
+     if (allUsers.length === 0) {
+-      const bootstrapAdmin: AllowedUser = {
+-        email,
+-        role: 'admin',
+-        addedAt: new Date().toISOString(),
+-      };
+-      addAllowedUser(bootstrapAdmin);
+-    } else if (!allowedEntry) {
+-      // Email not on allowlist — deny access
++      addAllowedUser({ email, role: 'admin', addedAt: new Date().toISOString() });
++    } else if (!isEmailAllowed(email)) {
+       setIsAccessDenied(true);
++      setIsLoading(false);
+       return;
+     }
+ 
+     setIsAccessDenied(false);
+-
+     const entry = isEmailAllowed(email)!;
+     const user: AppUser = {
+       id: account.localAccountId,
+@@ -133,7 +115,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+       role: entry.role,
+       department: entry.department,
+     };
+-
+     setAppUser(user);
+ 
+     try {
+@@ -143,6 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+     } catch {
+       console.warn('Silent token acquisition failed');
+     }
++
++    setIsLoading(false);
+   };
+ 
+   const login = async () => {
+@@ -154,12 +137,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+   };
+ 
+   const logout = async () => {
+-    if (msalAccount) await msalInstance.logoutPopup({ account: msalAccount });
++    // Clear all local state first
+     setMsalAccount(null);
+     setAppUser(null);
+     setAccessToken(null);
+     setIsAccessDenied(false);
+     localStorage.removeItem('msal_access_token');
++
++    // Clear MSAL cache without a popup/redirect
++    const accounts = msalInstance.getAllAccounts();
++    if (accounts.length > 0) {
++      try {
++        await msalInstance.logoutPopup({
++          account: accounts[0],
++          mainWindowRedirectUri: window.location.origin, // stay on same page
++        });
++      } catch {
++        // If popup fails, MSAL cache is already cleared above — just reload
++        window.location.href = '/';
++      }
++    } else {
++      window.location.href = '/';
++    }
+   };
+ 
+   const getToken = async (): Promise<string | null> => {
+-- 
+2.43.0
+
