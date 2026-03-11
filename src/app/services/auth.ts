@@ -1,129 +1,89 @@
-import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+/**
+ * AuthService — Phase 1 Azure Migration
+ *
+ * Replaces Supabase auth with Azure Entra ID (MSAL).
+ * Interface kept compatible with existing callers.
+ */
 
-const API_URL = `https://${projectId}.supabase.co/functions/v1/make-server-5ec3cec0`;
+import { msalInstance, AppUser, AppRole } from '../../lib/authContext';
+import { loginRequest } from '../../lib/msalConfig';
 
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: 'admin' | 'fulfillment' | 'requestor' | 'approver';
-  department?: string;
-}
+export type { AppUser as User };
 
 export class AuthService {
-  private static accessToken: string | null = null;
-  private static currentUser: User | null = null;
-
-  static async signup(email: string, password: string, name: string, role: string, department?: string) {
-    const response = await fetch(`${API_URL}/auth/signup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${publicAnonKey}`,
-      },
-      body: JSON.stringify({ email, password, name, role, department }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || 'Signup failed');
-    }
-
-    return data;
-  }
-
-  static async signin(email: string, password: string) {
-    const response = await fetch(`${API_URL}/auth/signin`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${publicAnonKey}`,
-      },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || 'Sign in failed');
-    }
-
-    this.accessToken = data.accessToken;
-    this.currentUser = data.user;
-    localStorage.setItem('accessToken', data.accessToken);
-    localStorage.setItem('user', JSON.stringify(data.user));
-
-    return data;
-  }
-
-  static async signout() {
-    const token = this.getAccessToken(); // Ensure we have the token
-    
-    if (token) {
-      try {
-        await fetch(`${API_URL}/auth/signout`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-            'X-Session-Token': token,
-          },
-        });
-      } catch (error) {
-        console.error('Sign out error:', error);
-        // Continue to clear local storage even if server request fails
-      }
-    }
-
-    this.accessToken = null;
-    this.currentUser = null;
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('user');
-  }
 
   static getAccessToken(): string | null {
-    if (!this.accessToken) {
-      this.accessToken = localStorage.getItem('accessToken');
-    }
-    return this.accessToken;
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length === 0) return null;
+    return localStorage.getItem('msal_access_token');
   }
 
-  static getCurrentUser(): User | null {
-    if (!this.currentUser) {
-      const userStr = localStorage.getItem('user');
-      if (userStr) {
-        this.currentUser = JSON.parse(userStr);
-      }
-    }
-    return this.currentUser;
+  static getCurrentUser(): AppUser | null {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length === 0) return null;
+    const account = accounts[0];
+    const role = (localStorage.getItem(`role_${account.localAccountId}`) as AppRole) || 'requestor';
+    const department = localStorage.getItem(`dept_${account.localAccountId}`) || undefined;
+    return {
+      id: account.localAccountId,
+      email: account.username,
+      name: account.name || account.username,
+      role,
+      department,
+    };
   }
 
   static isAuthenticated(): boolean {
-    return !!this.getAccessToken();
+    return msalInstance.getAllAccounts().length > 0;
   }
 
-  static async checkSession() {
-    const token = this.getAccessToken();
-    if (!token) return null;
+  static async signin(): Promise<{ user: AppUser; accessToken: string }> {
+    const result = await msalInstance.loginPopup(loginRequest);
+    localStorage.setItem('msal_access_token', result.accessToken);
+    const role = (localStorage.getItem(`role_${result.account.localAccountId}`) as AppRole) || 'requestor';
+    const department = localStorage.getItem(`dept_${result.account.localAccountId}`) || undefined;
+    const user: AppUser = {
+      id: result.account.localAccountId,
+      email: result.account.username,
+      name: result.account.name || result.account.username,
+      role,
+      department,
+    };
+    return { user, accessToken: result.accessToken };
+  }
 
+  static async signout(): Promise<void> {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) {
+      await msalInstance.logoutPopup({ account: accounts[0] });
+    }
+    localStorage.removeItem('msal_access_token');
+  }
+
+  static async getFreshToken(): Promise<string | null> {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length === 0) return null;
     try {
-      const response = await fetch(`${API_URL}/auth/session`, {
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          ...(token ? { 'X-Session-Token': token } : {}),
-        },
-      });
-
-      if (!response.ok) {
-        this.signout();
+      const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] });
+      localStorage.setItem('msal_access_token', result.accessToken);
+      return result.accessToken;
+    } catch {
+      try {
+        const result = await msalInstance.acquireTokenPopup({ ...loginRequest, account: accounts[0] });
+        localStorage.setItem('msal_access_token', result.accessToken);
+        return result.accessToken;
+      } catch (err) {
+        console.error('Token refresh failed', err);
+        await AuthService.signout();
         return null;
       }
-
-      const data = await response.json();
-      this.currentUser = data.user;
-      return data.user;
-    } catch (error) {
-      console.error('Session check failed:', error);
-      this.signout();
-      return null;
     }
+  }
+
+  static async checkSession(): Promise<AppUser | null> {
+    if (!AuthService.isAuthenticated()) return null;
+    const token = await AuthService.getFreshToken();
+    if (!token) return null;
+    return AuthService.getCurrentUser();
   }
 }
