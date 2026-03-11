@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { PublicClientApplication, AccountInfo, AuthenticationResult } from '@azure/msal-browser';
+import { PublicClientApplication, AccountInfo, EventType, AuthenticationResult } from '@azure/msal-browser';
 import { msalConfig, loginRequest } from './msalConfig';
 
 export const msalInstance = new PublicClientApplication(msalConfig);
@@ -59,7 +59,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   isAccessDenied: boolean;
-  login: () => Promise<AppUser | null>;
+  login: () => Promise<void>;
   logout: () => Promise<void>;
   getToken: () => Promise<string | null>;
   setUserRole: (role: AppRole, department?: string) => void;
@@ -82,18 +82,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAccessDenied, setIsAccessDenied] = useState(false);
 
   useEffect(() => {
-    const accounts = msalInstance.getAllAccounts();
-    console.log('[Auth] Accounts found in cache:', accounts.length);
-    console.log('[Auth] Allowlist:', getAllowedUsers());
-    if (accounts.length > 0) {
-      const account = accounts[0];
-      console.log('[Auth] Auto-logging in with cached account:', account.username);
-      setMsalAccount(account);
-      hydrateAppUser(account);
-    } else {
-      console.log('[Auth] No cached account — showing login page');
-      setIsLoading(false);
-    }
+    const init = async () => {
+      // Handle the redirect response first (called after Microsoft redirects back)
+      try {
+        const result = await msalInstance.handleRedirectPromise();
+        if (result?.account) {
+          // Came back from a redirect login
+          setMsalAccount(result.account);
+          setAccessToken(result.accessToken);
+          localStorage.setItem('msal_access_token', result.accessToken);
+          await hydrateAppUser(result.account);
+          return;
+        }
+      } catch (err) {
+        console.error('[Auth] Redirect error:', err);
+      }
+
+      // Check for existing cached session
+      const accounts = msalInstance.getAllAccounts();
+      console.log('[Auth] Cached accounts:', accounts.length);
+      if (accounts.length > 0) {
+        const account = accounts[0];
+        setMsalAccount(account);
+        await hydrateAppUser(account);
+      } else {
+        setIsLoading(false);
+      }
+    };
+
+    init();
   }, []);
 
   const hydrateAppUser = async (account: AccountInfo) => {
@@ -111,54 +128,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setIsAccessDenied(false);
     const entry = isEmailAllowed(email)!;
-    const user: AppUser = {
+    setAppUser({
       id: account.localAccountId,
       email,
       name: account.name || email,
       role: entry.role,
       department: entry.department,
-    };
-    setAppUser(user);
+    });
 
     try {
       const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account });
       setAccessToken(result.accessToken);
       localStorage.setItem('msal_access_token', result.accessToken);
     } catch {
-      console.warn('Silent token acquisition failed');
+      console.warn('[Auth] Silent token failed');
     }
 
     setIsLoading(false);
   };
 
-  const login = async (): Promise<AppUser | null> => {
-    const result: AuthenticationResult = await msalInstance.loginPopup({
+  // Use redirect — works on all browsers without COOP header issues
+  const login = async (): Promise<void> => {
+    await msalInstance.loginRedirect({
       ...loginRequest,
       prompt: 'select_account',
     });
-    setMsalAccount(result.account);
-    setAccessToken(result.accessToken);
-    localStorage.setItem('msal_access_token', result.accessToken);
-    await hydrateAppUser(result.account);
-
-    // Return the user directly from allowlist so caller can redirect immediately
-    const email = result.account.username;
-    const entry = isEmailAllowed(email);
-    if (!entry) return null;
-    return {
-      id: result.account.localAccountId,
-      email,
-      name: result.account.name || email,
-      role: entry.role,
-      department: entry.department,
-    };
+    // Page will redirect to Microsoft, then come back — handled in useEffect above
   };
 
-  const logout = async () => {
+  const logout = async (): Promise<void> => {
     localStorage.removeItem('msal_access_token');
     localStorage.removeItem('shc_allowed_emails');
-
-    // Clear React state immediately
     setMsalAccount(null);
     setAppUser(null);
     setAccessToken(null);
@@ -166,16 +166,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0) {
-      try {
-        await msalInstance.logoutPopup({
-          account: accounts[0],
-          postLogoutRedirectUri: window.location.origin,
-        });
-      } catch {
-        // Popup blocked or closed — MSAL cache was already cleared, just redirect
-      }
+      await msalInstance.logoutRedirect({
+        account: accounts[0],
+        postLogoutRedirectUri: window.location.origin,
+      });
+    } else {
+      window.location.href = '/';
     }
-    window.location.href = '/';
   };
 
   const getToken = async (): Promise<string | null> => {
@@ -186,12 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('msal_access_token', result.accessToken);
       return result.accessToken;
     } catch {
-      try {
-        const result = await msalInstance.acquireTokenPopup({ ...loginRequest, account: msalAccount });
-        setAccessToken(result.accessToken);
-        localStorage.setItem('msal_access_token', result.accessToken);
-        return result.accessToken;
-      } catch { return null; }
+      return null;
     }
   };
 

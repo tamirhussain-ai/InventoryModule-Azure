@@ -3,7 +3,7 @@ import App from "./app/App.tsx";
 import "./styles/index.css";
 import { msalInstance } from "./lib/authContext";
 
-// Initialize MSAL before rendering — popup flow, no redirects
+// Initialize MSAL and handle redirect response before rendering
 msalInstance.initialize().then(() => {
   createRoot(document.getElementById("root")!).render(<App />);
 });

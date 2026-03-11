@@ -22,7 +22,7 @@ import Bins from "./pages/Bins";
 import Lots from "./pages/Lots";
 import Approvals from "./pages/Approvals";
 import NotFound from "./pages/NotFound";
-import { msalInstance } from "../lib/authContext";
+import { msalInstance, getAllowedUsers, isEmailAllowed } from "../lib/authContext";
 
 function HydrateFallback() {
   return (
@@ -35,12 +35,41 @@ function HydrateFallback() {
   );
 }
 
-// Protected route loader — checks MSAL session (no localStorage token needed)
 function protectedLoader() {
   const accounts = msalInstance.getAllAccounts();
-  if (accounts.length === 0) {
-    return redirect('/');
+  if (accounts.length === 0) return redirect('/');
+
+  // Check allowlist
+  const email = accounts[0].username;
+  const allowed = isEmailAllowed(email);
+  const allUsers = getAllowedUsers();
+
+  // Allow bootstrap (first user) or if on allowlist
+  if (allUsers.length === 0 || allowed) return null;
+
+  return redirect('/');
+}
+
+// After redirect login lands on /, check if already authenticated and route to dashboard
+function loginLoader() {
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length === 0) return null;
+
+  const email = accounts[0].username;
+  const allUsers = getAllowedUsers();
+  const allowed = isEmailAllowed(email);
+
+  // Bootstrap or allowed — redirect to correct dashboard
+  if (allUsers.length === 0 || allowed) {
+    const role = allowed?.role || 'admin';
+    switch (role) {
+      case 'admin':       return redirect('/admin');
+      case 'fulfillment': return redirect('/fulfillment');
+      case 'approver':    return redirect('/approver');
+      default:            return redirect('/requestor');
+    }
   }
+
   return null;
 }
 
@@ -50,29 +79,29 @@ export const router = createBrowserRouter([
     Component: Root,
     HydrateFallback,
     children: [
-      { index: true, Component: Login },
-      { path: "login", Component: Login },
-      { path: "admin",          Component: AdminDashboard,      loader: protectedLoader },
-      { path: "fulfillment",    Component: FulfillmentDashboard, loader: protectedLoader },
-      { path: "requestor",      Component: RequestorDashboard,  loader: protectedLoader },
-      { path: "approver",       Component: ApproverDashboard,   loader: protectedLoader },
-      { path: "catalog",        Component: ItemCatalog,         loader: protectedLoader },
-      { path: "items/:id",      Component: ItemDetails,         loader: protectedLoader },
-      { path: "cart",           Component: OrderCart,           loader: protectedLoader },
-      { path: "orders",         Component: MyOrders,            loader: protectedLoader },
-      { path: "orders/:id",     Component: OrderDetails,        loader: protectedLoader },
-      { path: "returns",        Component: Returns,             loader: protectedLoader },
-      { path: "stock",          Component: StockManagement,     loader: protectedLoader },
-      { path: "reports",        Component: Reports,             loader: protectedLoader },
-      { path: "settings",       Component: AdminSettings,       loader: protectedLoader },
-      { path: "purchase-orders",Component: PurchaseOrders,      loader: protectedLoader },
-      { path: "transfers",      Component: Transfers,           loader: protectedLoader },
-      { path: "cycle-counts",   Component: CycleCounts,         loader: protectedLoader },
-      { path: "vendors",        Component: Vendors,             loader: protectedLoader },
-      { path: "bins",           Component: Bins,                loader: protectedLoader },
-      { path: "lots",           Component: Lots,                loader: protectedLoader },
-      { path: "approvals",      Component: Approvals,           loader: protectedLoader },
-      { path: "*",              Component: NotFound },
+      { index: true, Component: Login, loader: loginLoader },
+      { path: "login", Component: Login, loader: loginLoader },
+      { path: "admin",           Component: AdminDashboard,       loader: protectedLoader },
+      { path: "fulfillment",     Component: FulfillmentDashboard, loader: protectedLoader },
+      { path: "requestor",       Component: RequestorDashboard,   loader: protectedLoader },
+      { path: "approver",        Component: ApproverDashboard,    loader: protectedLoader },
+      { path: "catalog",         Component: ItemCatalog,          loader: protectedLoader },
+      { path: "items/:id",       Component: ItemDetails,          loader: protectedLoader },
+      { path: "cart",            Component: OrderCart,            loader: protectedLoader },
+      { path: "orders",          Component: MyOrders,             loader: protectedLoader },
+      { path: "orders/:id",      Component: OrderDetails,         loader: protectedLoader },
+      { path: "returns",         Component: Returns,              loader: protectedLoader },
+      { path: "stock",           Component: StockManagement,      loader: protectedLoader },
+      { path: "reports",         Component: Reports,              loader: protectedLoader },
+      { path: "settings",        Component: AdminSettings,        loader: protectedLoader },
+      { path: "purchase-orders", Component: PurchaseOrders,       loader: protectedLoader },
+      { path: "transfers",       Component: Transfers,            loader: protectedLoader },
+      { path: "cycle-counts",    Component: CycleCounts,          loader: protectedLoader },
+      { path: "vendors",         Component: Vendors,              loader: protectedLoader },
+      { path: "bins",            Component: Bins,                 loader: protectedLoader },
+      { path: "lots",            Component: Lots,                 loader: protectedLoader },
+      { path: "approvals",       Component: Approvals,            loader: protectedLoader },
+      { path: "*",               Component: NotFound },
     ],
   },
 ]);

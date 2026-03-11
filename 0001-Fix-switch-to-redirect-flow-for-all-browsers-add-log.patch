@@ -1,0 +1,410 @@
+From d7a88370fee1eb00dcd81bcdb42e07b837b2dc36 Mon Sep 17 00:00:00 2001
+From: tamirhussain-ai <tamirhussain@users.noreply.github.com>
+Date: Wed, 11 Mar 2026 23:36:24 +0000
+Subject: [PATCH] Fix: switch to redirect flow for all browsers, add
+ loginLoader for post-login routing
+
+---
+ src/app/pages/Login.tsx |  39 ++++------------
+ src/app/routes.tsx      |  83 ++++++++++++++++++++++-----------
+ src/lib/authContext.tsx | 100 ++++++++++++++++++----------------------
+ src/main.tsx            |   2 +-
+ vite.config.ts          |   9 ----
+ 5 files changed, 112 insertions(+), 121 deletions(-)
+
+diff --git a/src/app/pages/Login.tsx b/src/app/pages/Login.tsx
+index bb3b074..b4c1153 100644
+--- a/src/app/pages/Login.tsx
++++ b/src/app/pages/Login.tsx
+@@ -1,9 +1,7 @@
+ import { useState } from 'react';
+-import { useNavigate } from 'react-router';
+ import { useAuth } from '../../lib/authContext';
+ import { Button } from '../components/ui/button';
+ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+-import { toast } from 'sonner';
+ import { Package } from 'lucide-react';
+ import AccessDenied from './AccessDenied';
+ 
+@@ -18,51 +16,32 @@ function MicrosoftLogo() {
+   );
+ }
+ 
+-const ROLE_ROUTES: Record<string, string> = {
+-  admin: '/admin',
+-  fulfillment: '/fulfillment',
+-  approver: '/approver',
+-  requestor: '/requestor',
+-};
+-
+ export default function Login() {
+-  const navigate = useNavigate();
+-  const { isLoading, isAccessDenied, login } = useAuth();
++  const { isLoading, isAuthenticated, isAccessDenied, login, user } = useAuth();
+   const [signingIn, setSigningIn] = useState(false);
+ 
+-  if (isAccessDenied) return <AccessDenied />;
+-
++  // Already authenticated — routes.tsx loader handles redirect
++  // but as a fallback, show loading while we wait
+   if (isLoading) {
+     return (
+       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+         <div className="text-center">
+           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
+-          <p className="mt-4 text-gray-600">Loading...</p>
++          <p className="mt-4 text-gray-600">Signing you in...</p>
+         </div>
+       </div>
+     );
+   }
+ 
++  if (isAccessDenied) return <AccessDenied />;
++
+   const handleLogin = async () => {
+     setSigningIn(true);
+     try {
+-      const user = await login();
+-      if (user) {
+-        // Redirect immediately using the returned user — no need to wait for state update
+-        const route = ROLE_ROUTES[user.role] || '/requestor';
+-        console.log('[Login] Redirecting to:', route, 'for role:', user.role);
+-        navigate(route, { replace: true });
+-      } else {
+-        // Email not on allowlist — isAccessDenied will flip and show AccessDenied
+-        console.log('[Login] User not on allowlist');
+-      }
++      await login();
++      // loginRedirect navigates away — this line won't be reached
+     } catch (error: any) {
+-      if (error?.errorCode === 'user_cancelled') {
+-        setSigningIn(false);
+-        return;
+-      }
+       console.error('Login error:', error);
+-      toast.error('Sign in failed. Please try again.');
+       setSigningIn(false);
+     }
+   };
+@@ -87,7 +66,7 @@ export default function Login() {
+             className="w-full flex items-center gap-3 h-11 text-sm font-medium border-gray-300 hover:bg-gray-50"
+           >
+             <MicrosoftLogo />
+-            {signingIn ? 'Signing in...' : 'Sign in with Microsoft'}
++            {signingIn ? 'Redirecting to Microsoft...' : 'Sign in with Microsoft'}
+           </Button>
+           <p className="text-center text-xs text-gray-500 pt-2">
+             Use your university email. Contact your administrator if you need access.
+diff --git a/src/app/routes.tsx b/src/app/routes.tsx
+index 69d9573..d0f0b59 100644
+--- a/src/app/routes.tsx
++++ b/src/app/routes.tsx
+@@ -22,7 +22,7 @@ import Bins from "./pages/Bins";
+ import Lots from "./pages/Lots";
+ import Approvals from "./pages/Approvals";
+ import NotFound from "./pages/NotFound";
+-import { msalInstance } from "../lib/authContext";
++import { msalInstance, getAllowedUsers, isEmailAllowed } from "../lib/authContext";
+ 
+ function HydrateFallback() {
+   return (
+@@ -35,12 +35,41 @@ function HydrateFallback() {
+   );
+ }
+ 
+-// Protected route loader — checks MSAL session (no localStorage token needed)
+ function protectedLoader() {
+   const accounts = msalInstance.getAllAccounts();
+-  if (accounts.length === 0) {
+-    return redirect('/');
++  if (accounts.length === 0) return redirect('/');
++
++  // Check allowlist
++  const email = accounts[0].username;
++  const allowed = isEmailAllowed(email);
++  const allUsers = getAllowedUsers();
++
++  // Allow bootstrap (first user) or if on allowlist
++  if (allUsers.length === 0 || allowed) return null;
++
++  return redirect('/');
++}
++
++// After redirect login lands on /, check if already authenticated and route to dashboard
++function loginLoader() {
++  const accounts = msalInstance.getAllAccounts();
++  if (accounts.length === 0) return null;
++
++  const email = accounts[0].username;
++  const allUsers = getAllowedUsers();
++  const allowed = isEmailAllowed(email);
++
++  // Bootstrap or allowed — redirect to correct dashboard
++  if (allUsers.length === 0 || allowed) {
++    const role = allowed?.role || 'admin';
++    switch (role) {
++      case 'admin':       return redirect('/admin');
++      case 'fulfillment': return redirect('/fulfillment');
++      case 'approver':    return redirect('/approver');
++      default:            return redirect('/requestor');
++    }
+   }
++
+   return null;
+ }
+ 
+@@ -50,29 +79,29 @@ export const router = createBrowserRouter([
+     Component: Root,
+     HydrateFallback,
+     children: [
+-      { index: true, Component: Login },
+-      { path: "login", Component: Login },
+-      { path: "admin",          Component: AdminDashboard,      loader: protectedLoader },
+-      { path: "fulfillment",    Component: FulfillmentDashboard, loader: protectedLoader },
+-      { path: "requestor",      Component: RequestorDashboard,  loader: protectedLoader },
+-      { path: "approver",       Component: ApproverDashboard,   loader: protectedLoader },
+-      { path: "catalog",        Component: ItemCatalog,         loader: protectedLoader },
+-      { path: "items/:id",      Component: ItemDetails,         loader: protectedLoader },
+-      { path: "cart",           Component: OrderCart,           loader: protectedLoader },
+-      { path: "orders",         Component: MyOrders,            loader: protectedLoader },
+-      { path: "orders/:id",     Component: OrderDetails,        loader: protectedLoader },
+-      { path: "returns",        Component: Returns,             loader: protectedLoader },
+-      { path: "stock",          Component: StockManagement,     loader: protectedLoader },
+-      { path: "reports",        Component: Reports,             loader: protectedLoader },
+-      { path: "settings",       Component: AdminSettings,       loader: protectedLoader },
+-      { path: "purchase-orders",Component: PurchaseOrders,      loader: protectedLoader },
+-      { path: "transfers",      Component: Transfers,           loader: protectedLoader },
+-      { path: "cycle-counts",   Component: CycleCounts,         loader: protectedLoader },
+-      { path: "vendors",        Component: Vendors,             loader: protectedLoader },
+-      { path: "bins",           Component: Bins,                loader: protectedLoader },
+-      { path: "lots",           Component: Lots,                loader: protectedLoader },
+-      { path: "approvals",      Component: Approvals,           loader: protectedLoader },
+-      { path: "*",              Component: NotFound },
++      { index: true, Component: Login, loader: loginLoader },
++      { path: "login", Component: Login, loader: loginLoader },
++      { path: "admin",           Component: AdminDashboard,       loader: protectedLoader },
++      { path: "fulfillment",     Component: FulfillmentDashboard, loader: protectedLoader },
++      { path: "requestor",       Component: RequestorDashboard,   loader: protectedLoader },
++      { path: "approver",        Component: ApproverDashboard,    loader: protectedLoader },
++      { path: "catalog",         Component: ItemCatalog,          loader: protectedLoader },
++      { path: "items/:id",       Component: ItemDetails,          loader: protectedLoader },
++      { path: "cart",            Component: OrderCart,            loader: protectedLoader },
++      { path: "orders",          Component: MyOrders,             loader: protectedLoader },
++      { path: "orders/:id",      Component: OrderDetails,         loader: protectedLoader },
++      { path: "returns",         Component: Returns,              loader: protectedLoader },
++      { path: "stock",           Component: StockManagement,      loader: protectedLoader },
++      { path: "reports",         Component: Reports,              loader: protectedLoader },
++      { path: "settings",        Component: AdminSettings,        loader: protectedLoader },
++      { path: "purchase-orders", Component: PurchaseOrders,       loader: protectedLoader },
++      { path: "transfers",       Component: Transfers,            loader: protectedLoader },
++      { path: "cycle-counts",    Component: CycleCounts,          loader: protectedLoader },
++      { path: "vendors",         Component: Vendors,              loader: protectedLoader },
++      { path: "bins",            Component: Bins,                 loader: protectedLoader },
++      { path: "lots",            Component: Lots,                 loader: protectedLoader },
++      { path: "approvals",       Component: Approvals,            loader: protectedLoader },
++      { path: "*",               Component: NotFound },
+     ],
+   },
+ ]);
+diff --git a/src/lib/authContext.tsx b/src/lib/authContext.tsx
+index 10c5f39..110bd6e 100644
+--- a/src/lib/authContext.tsx
++++ b/src/lib/authContext.tsx
+@@ -1,5 +1,5 @@
+ import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+-import { PublicClientApplication, AccountInfo, AuthenticationResult } from '@azure/msal-browser';
++import { PublicClientApplication, AccountInfo, EventType, AuthenticationResult } from '@azure/msal-browser';
+ import { msalConfig, loginRequest } from './msalConfig';
+ 
+ export const msalInstance = new PublicClientApplication(msalConfig);
+@@ -59,7 +59,7 @@ interface AuthContextType {
+   isAuthenticated: boolean;
+   isLoading: boolean;
+   isAccessDenied: boolean;
+-  login: () => Promise<AppUser | null>;
++  login: () => Promise<void>;
+   logout: () => Promise<void>;
+   getToken: () => Promise<string | null>;
+   setUserRole: (role: AppRole, department?: string) => void;
+@@ -82,18 +82,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+   const [isAccessDenied, setIsAccessDenied] = useState(false);
+ 
+   useEffect(() => {
+-    const accounts = msalInstance.getAllAccounts();
+-    console.log('[Auth] Accounts found in cache:', accounts.length);
+-    console.log('[Auth] Allowlist:', getAllowedUsers());
+-    if (accounts.length > 0) {
+-      const account = accounts[0];
+-      console.log('[Auth] Auto-logging in with cached account:', account.username);
+-      setMsalAccount(account);
+-      hydrateAppUser(account);
+-    } else {
+-      console.log('[Auth] No cached account — showing login page');
+-      setIsLoading(false);
+-    }
++    const init = async () => {
++      // Handle the redirect response first (called after Microsoft redirects back)
++      try {
++        const result = await msalInstance.handleRedirectPromise();
++        if (result?.account) {
++          // Came back from a redirect login
++          setMsalAccount(result.account);
++          setAccessToken(result.accessToken);
++          localStorage.setItem('msal_access_token', result.accessToken);
++          await hydrateAppUser(result.account);
++          return;
++        }
++      } catch (err) {
++        console.error('[Auth] Redirect error:', err);
++      }
++
++      // Check for existing cached session
++      const accounts = msalInstance.getAllAccounts();
++      console.log('[Auth] Cached accounts:', accounts.length);
++      if (accounts.length > 0) {
++        const account = accounts[0];
++        setMsalAccount(account);
++        await hydrateAppUser(account);
++      } else {
++        setIsLoading(false);
++      }
++    };
++
++    init();
+   }, []);
+ 
+   const hydrateAppUser = async (account: AccountInfo) => {
+@@ -111,54 +128,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+ 
+     setIsAccessDenied(false);
+     const entry = isEmailAllowed(email)!;
+-    const user: AppUser = {
++    setAppUser({
+       id: account.localAccountId,
+       email,
+       name: account.name || email,
+       role: entry.role,
+       department: entry.department,
+-    };
+-    setAppUser(user);
++    });
+ 
+     try {
+       const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account });
+       setAccessToken(result.accessToken);
+       localStorage.setItem('msal_access_token', result.accessToken);
+     } catch {
+-      console.warn('Silent token acquisition failed');
++      console.warn('[Auth] Silent token failed');
+     }
+ 
+     setIsLoading(false);
+   };
+ 
+-  const login = async (): Promise<AppUser | null> => {
+-    const result: AuthenticationResult = await msalInstance.loginPopup({
++  // Use redirect — works on all browsers without COOP header issues
++  const login = async (): Promise<void> => {
++    await msalInstance.loginRedirect({
+       ...loginRequest,
+       prompt: 'select_account',
+     });
+-    setMsalAccount(result.account);
+-    setAccessToken(result.accessToken);
+-    localStorage.setItem('msal_access_token', result.accessToken);
+-    await hydrateAppUser(result.account);
+-
+-    // Return the user directly from allowlist so caller can redirect immediately
+-    const email = result.account.username;
+-    const entry = isEmailAllowed(email);
+-    if (!entry) return null;
+-    return {
+-      id: result.account.localAccountId,
+-      email,
+-      name: result.account.name || email,
+-      role: entry.role,
+-      department: entry.department,
+-    };
++    // Page will redirect to Microsoft, then come back — handled in useEffect above
+   };
+ 
+-  const logout = async () => {
++  const logout = async (): Promise<void> => {
+     localStorage.removeItem('msal_access_token');
+     localStorage.removeItem('shc_allowed_emails');
+-
+-    // Clear React state immediately
+     setMsalAccount(null);
+     setAppUser(null);
+     setAccessToken(null);
+@@ -166,16 +166,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+ 
+     const accounts = msalInstance.getAllAccounts();
+     if (accounts.length > 0) {
+-      try {
+-        await msalInstance.logoutPopup({
+-          account: accounts[0],
+-          postLogoutRedirectUri: window.location.origin,
+-        });
+-      } catch {
+-        // Popup blocked or closed — MSAL cache was already cleared, just redirect
+-      }
++      await msalInstance.logoutRedirect({
++        account: accounts[0],
++        postLogoutRedirectUri: window.location.origin,
++      });
++    } else {
++      window.location.href = '/';
+     }
+-    window.location.href = '/';
+   };
+ 
+   const getToken = async (): Promise<string | null> => {
+@@ -186,12 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+       localStorage.setItem('msal_access_token', result.accessToken);
+       return result.accessToken;
+     } catch {
+-      try {
+-        const result = await msalInstance.acquireTokenPopup({ ...loginRequest, account: msalAccount });
+-        setAccessToken(result.accessToken);
+-        localStorage.setItem('msal_access_token', result.accessToken);
+-        return result.accessToken;
+-      } catch { return null; }
++      return null;
+     }
+   };
+ 
+diff --git a/src/main.tsx b/src/main.tsx
+index 83d533c..cd91fa5 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -3,7 +3,7 @@ import App from "./app/App.tsx";
+ import "./styles/index.css";
+ import { msalInstance } from "./lib/authContext";
+ 
+-// Initialize MSAL before rendering — popup flow, no redirects
++// Initialize MSAL and handle redirect response before rendering
+ msalInstance.initialize().then(() => {
+   createRoot(document.getElementById("root")!).render(<App />);
+ });
+diff --git a/vite.config.ts b/vite.config.ts
+index 6dcbd3d..fcc0a18 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -14,13 +14,4 @@ export default defineConfig({
+     },
+   },
+   assetsInclude: ['**/*.svg', '**/*.csv'],
+-
+-  // Required for MSAL popup auth to work in development
+-  // Without these headers, Chrome blocks the popup from communicating back
+-  server: {
+-    headers: {
+-      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+-      'Cross-Origin-Embedder-Policy': 'unsafe-none',
+-    },
+-  },
+ })
+-- 
+2.43.0
+

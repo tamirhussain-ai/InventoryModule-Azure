@@ -14,13 +14,4 @@ export default defineConfig({
     },
   },
   assetsInclude: ['**/*.svg', '**/*.csv'],
-
-  // Required for MSAL popup auth to work in development
-  // Without these headers, Chrome blocks the popup from communicating back
-  server: {
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
-      'Cross-Origin-Embedder-Policy': 'unsafe-none',
-    },
-  },
 })
