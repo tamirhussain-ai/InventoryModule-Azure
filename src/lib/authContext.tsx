@@ -59,7 +59,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   isAccessDenied: boolean;
-  login: () => Promise<void>;
+  login: () => Promise<AppUser | null>;
   logout: () => Promise<void>;
   getToken: () => Promise<string | null>;
   setUserRole: (role: AppRole, department?: string) => void;
@@ -131,15 +131,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   };
 
-  const login = async () => {
+  const login = async (): Promise<AppUser | null> => {
     const result: AuthenticationResult = await msalInstance.loginPopup({
       ...loginRequest,
-      prompt: 'select_account', // Always show account picker
+      prompt: 'select_account',
     });
     setMsalAccount(result.account);
     setAccessToken(result.accessToken);
     localStorage.setItem('msal_access_token', result.accessToken);
     await hydrateAppUser(result.account);
+
+    // Return the user directly from allowlist so caller can redirect immediately
+    const email = result.account.username;
+    const entry = isEmailAllowed(email);
+    if (!entry) return null;
+    return {
+      id: result.account.localAccountId,
+      email,
+      name: result.account.name || email,
+      role: entry.role,
+      department: entry.department,
+    };
   };
 
   const logout = async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../lib/authContext';
 import { Button } from '../components/ui/button';
@@ -18,23 +18,18 @@ function MicrosoftLogo() {
   );
 }
 
+const ROLE_ROUTES: Record<string, string> = {
+  admin: '/admin',
+  fulfillment: '/fulfillment',
+  approver: '/approver',
+  requestor: '/requestor',
+};
+
 export default function Login() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading, isAccessDenied, login, user } = useAuth();
+  const { isLoading, isAccessDenied, login } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
 
-  useEffect(() => {
-    if (!isLoading && isAuthenticated && user) {
-      switch (user.role) {
-        case 'admin':       navigate('/admin');       break;
-        case 'fulfillment': navigate('/fulfillment'); break;
-        case 'approver':    navigate('/approver');    break;
-        default:            navigate('/requestor');   break;
-      }
-    }
-  }, [isAuthenticated, isLoading, user]);
-
-  // Show access denied screen if user signed in but isn't on the allowlist
   if (isAccessDenied) return <AccessDenied />;
 
   if (isLoading) {
@@ -51,11 +46,23 @@ export default function Login() {
   const handleLogin = async () => {
     setSigningIn(true);
     try {
-      await login();
+      const user = await login();
+      if (user) {
+        // Redirect immediately using the returned user — no need to wait for state update
+        const route = ROLE_ROUTES[user.role] || '/requestor';
+        console.log('[Login] Redirecting to:', route, 'for role:', user.role);
+        navigate(route, { replace: true });
+      } else {
+        // Email not on allowlist — isAccessDenied will flip and show AccessDenied
+        console.log('[Login] User not on allowlist');
+      }
     } catch (error: any) {
-      if (error?.errorCode === 'user_cancelled') return;
+      if (error?.errorCode === 'user_cancelled') {
+        setSigningIn(false);
+        return;
+      }
+      console.error('Login error:', error);
       toast.error('Sign in failed. Please try again.');
-    } finally {
       setSigningIn(false);
     }
   };
