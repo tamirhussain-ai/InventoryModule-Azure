@@ -1,0 +1,738 @@
+From dd01a7313efbd82f9ed68aaf02a034fb78b9e5ce Mon Sep 17 00:00:00 2001
+From: tamirhussain-ai <tamirhussain@users.noreply.github.com>
+Date: Wed, 11 Mar 2026 22:19:15 +0000
+Subject: [PATCH] Phase 1b: Add email allowlist access control
+
+- authContext: allowlist check on every login, bootstrap first user as admin
+- AccessDenied.tsx: friendly screen for unauthorized university users
+- AllowlistManager.tsx: admin UI to add/remove/bulk-import allowed emails with roles
+- AdminSettings: new Access Control tab (admin only)
+- Login: shows AccessDenied page if email not on allowlist
+---
+ src/app/components/AllowlistManager.tsx | 229 ++++++++++++++++++++++++
+ src/app/pages/AccessDenied.tsx          |  53 ++++++
+ src/app/pages/AdminSettings.tsx         |   8 +
+ src/app/pages/Login.tsx                 |  53 +++---
+ src/lib/authContext.tsx                 | 181 +++++++++++--------
+ 5 files changed, 418 insertions(+), 106 deletions(-)
+ create mode 100644 src/app/components/AllowlistManager.tsx
+ create mode 100644 src/app/pages/AccessDenied.tsx
+
+diff --git a/src/app/components/AllowlistManager.tsx b/src/app/components/AllowlistManager.tsx
+new file mode 100644
+index 0000000..4f4ec2b
+--- /dev/null
++++ b/src/app/components/AllowlistManager.tsx
+@@ -0,0 +1,229 @@
++import { useState, useEffect } from 'react';
++import { getAllowedUsers, addAllowedUser, removeAllowedUser, AllowedUser, AppRole } from '../../lib/authContext';
++import { Button } from './ui/button';
++import { Input } from './ui/input';
++import { Label } from './ui/label';
++import { Badge } from './ui/badge';
++import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
++import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
++import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
++import { Alert, AlertDescription } from './ui/alert';
++import { UserPlus, Trash2, Upload, Users, ShieldCheck } from 'lucide-react';
++import { toast } from 'sonner';
++
++const ROLE_COLORS: Record<AppRole, string> = {
++  admin:       'bg-red-100 text-red-700',
++  approver:    'bg-purple-100 text-purple-700',
++  fulfillment: 'bg-blue-100 text-blue-700',
++  requestor:   'bg-green-100 text-green-700',
++};
++
++export default function AllowlistManager() {
++  const [users, setUsers] = useState<AllowedUser[]>([]);
++  const [dialogOpen, setDialogOpen] = useState(false);
++  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
++  const [email, setEmail] = useState('');
++  const [role, setRole] = useState<AppRole>('requestor');
++  const [department, setDepartment] = useState('');
++  const [bulkText, setBulkText] = useState('');
++  const [search, setSearch] = useState('');
++
++  const reload = () => setUsers(getAllowedUsers());
++
++  useEffect(() => { reload(); }, []);
++
++  const handleAdd = () => {
++    if (!email.trim()) { toast.error('Email is required'); return; }
++    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
++      toast.error('Please enter a valid email address'); return;
++    }
++    addAllowedUser({ email: email.trim().toLowerCase(), role, department: department || undefined, addedAt: new Date().toISOString() });
++    toast.success(`${email.trim()} added to allowlist`);
++    setEmail(''); setRole('requestor'); setDepartment('');
++    setDialogOpen(false);
++    reload();
++  };
++
++  const handleRemove = (emailToRemove: string) => {
++    removeAllowedUser(emailToRemove);
++    toast.success(`${emailToRemove} removed`);
++    reload();
++  };
++
++  const handleBulkImport = () => {
++    const lines = bulkText.split('\n').map(l => l.trim()).filter(Boolean);
++    let added = 0;
++    for (const line of lines) {
++      // Support: email, email role, email role department
++      const parts = line.split(/[\s,]+/);
++      const emailPart = parts[0];
++      const rolePart = (parts[1] as AppRole) || 'requestor';
++      const deptPart = parts[2] || undefined;
++      const validRoles: AppRole[] = ['admin', 'fulfillment', 'requestor', 'approver'];
++      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailPart)) continue;
++      addAllowedUser({
++        email: emailPart.toLowerCase(),
++        role: validRoles.includes(rolePart) ? rolePart : 'requestor',
++        department: deptPart,
++        addedAt: new Date().toISOString(),
++      });
++      added++;
++    }
++    toast.success(`${added} user${added !== 1 ? 's' : ''} imported`);
++    setBulkText('');
++    setBulkDialogOpen(false);
++    reload();
++  };
++
++  const filtered = users.filter(u =>
++    u.email.toLowerCase().includes(search.toLowerCase()) ||
++    (u.department || '').toLowerCase().includes(search.toLowerCase())
++  );
++
++  return (
++    <Card>
++      <CardHeader>
++        <div className="flex items-center justify-between">
++          <div className="flex items-center gap-2">
++            <ShieldCheck className="h-5 w-5 text-blue-600" />
++            <div>
++              <CardTitle className="text-base">Access Control</CardTitle>
++              <CardDescription>Only pre-registered emails can sign in</CardDescription>
++            </div>
++          </div>
++          <div className="flex gap-2">
++            <Button variant="outline" size="sm" onClick={() => setBulkDialogOpen(true)}>
++              <Upload className="h-4 w-4 mr-1" /> Bulk Import
++            </Button>
++            <Button size="sm" onClick={() => setDialogOpen(true)}>
++              <UserPlus className="h-4 w-4 mr-1" /> Add User
++            </Button>
++          </div>
++        </div>
++      </CardHeader>
++
++      <CardContent className="space-y-3">
++        <div className="flex items-center gap-2">
++          <Input
++            placeholder="Search by email or department..."
++            value={search}
++            onChange={e => setSearch(e.target.value)}
++            className="max-w-sm"
++          />
++          <span className="text-sm text-gray-500 ml-auto flex items-center gap-1">
++            <Users className="h-4 w-4" /> {users.length} user{users.length !== 1 ? 's' : ''}
++          </span>
++        </div>
++
++        {users.length === 0 && (
++          <Alert>
++            <AlertDescription>
++              No users on the allowlist yet. Add at least one admin email to get started.
++            </AlertDescription>
++          </Alert>
++        )}
++
++        <div className="divide-y rounded-lg border overflow-hidden">
++          {filtered.map(u => (
++            <div key={u.email} className="flex items-center justify-between px-4 py-3 bg-white hover:bg-gray-50">
++              <div className="min-w-0">
++                <p className="text-sm font-medium text-gray-900 truncate">{u.email}</p>
++                {u.department && <p className="text-xs text-gray-500">{u.department}</p>}
++              </div>
++              <div className="flex items-center gap-3 ml-4 shrink-0">
++                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[u.role]}`}>
++                  {u.role}
++                </span>
++                <Button
++                  variant="ghost"
++                  size="icon"
++                  className="h-7 w-7 text-gray-400 hover:text-red-600"
++                  onClick={() => handleRemove(u.email)}
++                >
++                  <Trash2 className="h-4 w-4" />
++                </Button>
++              </div>
++            </div>
++          ))}
++          {filtered.length === 0 && users.length > 0 && (
++            <p className="text-sm text-gray-500 text-center py-6">No results for "{search}"</p>
++          )}
++        </div>
++      </CardContent>
++
++      {/* Add User Dialog */}
++      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
++        <DialogContent>
++          <DialogHeader>
++            <DialogTitle>Add Allowed User</DialogTitle>
++          </DialogHeader>
++          <div className="space-y-4 py-2">
++            <div className="space-y-1.5">
++              <Label>University Email *</Label>
++              <Input
++                placeholder="name@university.edu"
++                value={email}
++                onChange={e => setEmail(e.target.value)}
++                onKeyDown={e => e.key === 'Enter' && handleAdd()}
++              />
++            </div>
++            <div className="space-y-1.5">
++              <Label>Role</Label>
++              <Select value={role} onValueChange={v => setRole(v as AppRole)}>
++                <SelectTrigger><SelectValue /></SelectTrigger>
++                <SelectContent>
++                  <SelectItem value="requestor">Requestor</SelectItem>
++                  <SelectItem value="approver">Approver</SelectItem>
++                  <SelectItem value="fulfillment">Fulfillment</SelectItem>
++                  <SelectItem value="admin">Admin</SelectItem>
++                </SelectContent>
++              </Select>
++            </div>
++            <div className="space-y-1.5">
++              <Label>Department <span className="text-gray-400 font-normal">(optional)</span></Label>
++              <Input
++                placeholder="e.g. Nursing, Radiology"
++                value={department}
++                onChange={e => setDepartment(e.target.value)}
++              />
++            </div>
++          </div>
++          <DialogFooter>
++            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
++            <Button onClick={handleAdd}>Add User</Button>
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
++
++      {/* Bulk Import Dialog */}
++      <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
++        <DialogContent className="max-w-lg">
++          <DialogHeader>
++            <DialogTitle>Bulk Import Users</DialogTitle>
++          </DialogHeader>
++          <div className="space-y-3 py-2">
++            <p className="text-sm text-gray-600">
++              One entry per line. Format: <code className="bg-gray-100 px-1 rounded">email role department</code>
++            </p>
++            <div className="bg-gray-50 rounded p-3 text-xs text-gray-500 font-mono space-y-1">
++              <p>jane@university.edu requestor Nursing</p>
++              <p>bob@university.edu approver Radiology</p>
++              <p>alice@university.edu fulfillment</p>
++            </div>
++            <p className="text-xs text-gray-400">Role defaults to "requestor" if not specified. Valid roles: admin, approver, fulfillment, requestor</p>
++            <textarea
++              className="w-full border rounded-md p-3 text-sm font-mono min-h-[140px] focus:outline-none focus:ring-2 focus:ring-blue-500"
++              placeholder="email@university.edu role department"
++              value={bulkText}
++              onChange={e => setBulkText(e.target.value)}
++            />
++          </div>
++          <DialogFooter>
++            <Button variant="outline" onClick={() => setBulkDialogOpen(false)}>Cancel</Button>
++            <Button onClick={handleBulkImport} disabled={!bulkText.trim()}>Import</Button>
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
++    </Card>
++  );
++}
+diff --git a/src/app/pages/AccessDenied.tsx b/src/app/pages/AccessDenied.tsx
+new file mode 100644
+index 0000000..0cf9db0
+--- /dev/null
++++ b/src/app/pages/AccessDenied.tsx
+@@ -0,0 +1,53 @@
++import { useAuth } from '../../lib/authContext';
++import { Button } from '../components/ui/button';
++import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
++import { ShieldX, Package, Mail } from 'lucide-react';
++
++export default function AccessDenied() {
++  const { msalAccount, logout } = useAuth();
++
++  return (
++    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
++      <Card className="w-full max-w-md shadow-lg text-center">
++        <CardHeader className="pb-2">
++          <div className="flex justify-center mb-4">
++            <div className="bg-red-100 p-3 rounded-full">
++              <ShieldX className="h-8 w-8 text-red-600" />
++            </div>
++          </div>
++          <CardTitle className="text-2xl">Access Denied</CardTitle>
++          <CardDescription className="text-base mt-1">
++            Your account is not authorized to access the SHC Inventory System.
++          </CardDescription>
++        </CardHeader>
++        <CardContent className="space-y-4 pt-2">
++          {msalAccount && (
++            <div className="bg-gray-50 rounded-lg px-4 py-3 text-sm text-gray-600 flex items-center gap-2 justify-center">
++              <Mail className="h-4 w-4 shrink-0" />
++              <span>Signed in as <strong>{msalAccount.username}</strong></span>
++            </div>
++          )}
++
++          <p className="text-sm text-gray-500">
++            To request access, contact your system administrator and provide your university email address.
++          </p>
++
++          <div className="flex flex-col gap-2 pt-2">
++            <Button
++              variant="outline"
++              onClick={logout}
++              className="w-full"
++            >
++              Sign out and try a different account
++            </Button>
++          </div>
++
++          <div className="flex items-center justify-center gap-2 text-xs text-gray-400 pt-2">
++            <Package className="h-3 w-3" />
++            <span>SHC Inventory System</span>
++          </div>
++        </CardContent>
++      </Card>
++    </div>
++  );
++}
+diff --git a/src/app/pages/AdminSettings.tsx b/src/app/pages/AdminSettings.tsx
+index bb8b5fb..1430933 100644
+--- a/src/app/pages/AdminSettings.tsx
++++ b/src/app/pages/AdminSettings.tsx
+@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
+ import { Switch } from '../components/ui/switch';
+ import { getUsers, getCategories, getLocations, createCategory, createLocation, updateCategory, updateLocation, createUser, updateUser, deleteUser, getEmailSettings, updateEmailSettings, getEmailPreferences, updateEmailPreferences, getRequestorCategorySettings, updateRequestorCategorySettings, getAppSettings, updateAppSettings, purgeInactiveItems, getEmailTemplates, updateEmailTemplate, resetEmailTemplate, getEmailTemplatePreview, getWorkflowSettings, updateWorkflowSettings, forcePasswordReset, getSecuritySettings, updateSecuritySettings } from '../services/api';
+ import { Users, Tag, MapPin, Plus, Pencil, UserCog, LogOut, Mail, Shield, Settings, Trash2, AlertTriangle, GitBranch, CheckCircle2, Clock, Eye, EyeOff, Copy, KeyRound, RotateCcw, Lock, Timer } from 'lucide-react';
++import AllowlistManager from '../components/AllowlistManager';
+ import { toast } from 'sonner';
+ import { AuthService } from '../services/auth';
+ import { Alert, AlertDescription } from '../components/ui/alert';
+@@ -361,6 +362,7 @@ export default function AdminSettings() {
+             <TabsTrigger key="security" value="security">Security</TabsTrigger>
+             {actualRole === 'admin' && <TabsTrigger key="csv-upload" value="csv-upload">CSV Upload</TabsTrigger>}
+             {actualRole === 'admin' && <TabsTrigger key="impersonate" value="impersonate">Role Impersonation</TabsTrigger>}
++            {actualRole === 'admin' && <TabsTrigger key="access-control" value="access-control">Access Control</TabsTrigger>}
+           </TabsList>
+ 
+           <TabsContent key="general" value="general">
+@@ -1273,6 +1275,12 @@ export default function AdminSettings() {
+               </Card>
+             </TabsContent>
+           )}
++
++          {actualRole === 'admin' && (
++            <TabsContent key="access-control" value="access-control">
++              <AllowlistManager />
++            </TabsContent>
++          )}
+         </Tabs>
+       </div>
+ 
+diff --git a/src/app/pages/Login.tsx b/src/app/pages/Login.tsx
+index 4af5ce5..fe15521 100644
+--- a/src/app/pages/Login.tsx
++++ b/src/app/pages/Login.tsx
+@@ -5,8 +5,8 @@ import { Button } from '../components/ui/button';
+ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+ import { toast } from 'sonner';
+ import { Package } from 'lucide-react';
++import AccessDenied from './AccessDenied';
+ 
+-// Microsoft logo SVG
+ function MicrosoftLogo() {
+   return (
+     <svg width="20" height="20" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+@@ -20,52 +20,46 @@ function MicrosoftLogo() {
+ 
+ export default function Login() {
+   const navigate = useNavigate();
+-  const { isAuthenticated, isLoading, login, user } = useAuth();
++  const { isAuthenticated, isLoading, isAccessDenied, login, user } = useAuth();
+   const [signingIn, setSigningIn] = useState(false);
+ 
+-  // Redirect if already authenticated
+   useEffect(() => {
+     if (!isLoading && isAuthenticated && user) {
+-      redirectToDashboard(user.role);
++      switch (user.role) {
++        case 'admin':       navigate('/admin');       break;
++        case 'fulfillment': navigate('/fulfillment'); break;
++        case 'approver':    navigate('/approver');    break;
++        default:            navigate('/requestor');   break;
++      }
+     }
+   }, [isAuthenticated, isLoading, user]);
+ 
+-  const redirectToDashboard = (role?: string) => {
+-    switch (role) {
+-      case 'admin':       navigate('/admin');       break;
+-      case 'fulfillment': navigate('/fulfillment'); break;
+-      case 'approver':    navigate('/approver');    break;
+-      case 'requestor':
+-      default:            navigate('/requestor');   break;
+-    }
+-  };
++  // Show access denied screen if user signed in but isn't on the allowlist
++  if (isAccessDenied) return <AccessDenied />;
++
++  if (isLoading) {
++    return (
++      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
++        <div className="text-center">
++          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
++          <p className="mt-4 text-gray-600">Loading...</p>
++        </div>
++      </div>
++    );
++  }
+ 
+   const handleLogin = async () => {
+     setSigningIn(true);
+     try {
+       await login();
+-      // useEffect above handles redirect once user state is set
+     } catch (error: any) {
+-      // User closed popup — don't show an error
+       if (error?.errorCode === 'user_cancelled') return;
+-      console.error('Login error:', error);
+       toast.error('Sign in failed. Please try again.');
+     } finally {
+       setSigningIn(false);
+     }
+   };
+ 
+-  if (isLoading) {
+-    return (
+-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+-        <div className="text-center">
+-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
+-          <p className="mt-4 text-gray-600">Loading...</p>
+-        </div>
+-      </div>
+-    );
+-  }
+-
+   return (
+     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+       <Card className="w-full max-w-md shadow-lg">
+@@ -78,7 +72,6 @@ export default function Login() {
+           <CardTitle className="text-2xl">SHC Inventory System</CardTitle>
+           <CardDescription>Sign in with your university Microsoft account</CardDescription>
+         </CardHeader>
+-
+         <CardContent className="pt-4 space-y-4">
+           <Button
+             onClick={handleLogin}
+@@ -89,10 +82,8 @@ export default function Login() {
+             <MicrosoftLogo />
+             {signingIn ? 'Signing in...' : 'Sign in with Microsoft'}
+           </Button>
+-
+           <p className="text-center text-xs text-gray-500 pt-2">
+-            Use your university email (e.g. you@university.edu).<br />
+-            Contact your administrator if you need access.
++            Use your university email. Contact your administrator if you need access.
+           </p>
+         </CardContent>
+       </Card>
+diff --git a/src/lib/authContext.tsx b/src/lib/authContext.tsx
+index 1c9ecae..cfa3295 100644
+--- a/src/lib/authContext.tsx
++++ b/src/lib/authContext.tsx
+@@ -2,33 +2,75 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
+ import { PublicClientApplication, AccountInfo, AuthenticationResult } from '@azure/msal-browser';
+ import { msalConfig, loginRequest } from './msalConfig';
+ 
+-// ─── MSAL Instance (singleton) ──────────────────────────────────────────────
+ export const msalInstance = new PublicClientApplication(msalConfig);
+ 
+-// ─── Types ───────────────────────────────────────────────────────────────────
+ export type AppRole = 'admin' | 'fulfillment' | 'requestor' | 'approver';
+ 
+ export interface AppUser {
+-  id: string;           // Azure Object ID
++  id: string;
+   email: string;
+   name: string;
+   role: AppRole;
+   department?: string;
+ }
+ 
++// ─── Allowlist helpers (stored in localStorage for Phase 1) ──────────────────
++// In Phase 2 this moves to the database.
++const ALLOWLIST_KEY = 'shc_allowed_emails';
++
++export interface AllowedUser {
++  email: string;
++  role: AppRole;
++  department?: string;
++  addedAt: string;
++}
++
++export function getAllowedUsers(): AllowedUser[] {
++  try {
++    const raw = localStorage.getItem(ALLOWLIST_KEY);
++    return raw ? JSON.parse(raw) : [];
++  } catch { return []; }
++}
++
++export function saveAllowedUsers(users: AllowedUser[]) {
++  localStorage.setItem(ALLOWLIST_KEY, JSON.stringify(users));
++}
++
++export function isEmailAllowed(email: string): AllowedUser | null {
++  const list = getAllowedUsers();
++  return list.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
++}
++
++export function addAllowedUser(user: AllowedUser) {
++  const list = getAllowedUsers();
++  const exists = list.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
++  if (exists >= 0) {
++    list[exists] = user; // update existing
++  } else {
++    list.push(user);
++  }
++  saveAllowedUsers(list);
++}
++
++export function removeAllowedUser(email: string) {
++  const list = getAllowedUsers().filter(u => u.email.toLowerCase() !== email.toLowerCase());
++  saveAllowedUsers(list);
++}
++
++// ─── Types ────────────────────────────────────────────────────────────────────
+ interface AuthContextType {
+   user: AppUser | null;
+   msalAccount: AccountInfo | null;
+   accessToken: string | null;
+   isAuthenticated: boolean;
+   isLoading: boolean;
++  isAccessDenied: boolean;
+   login: () => Promise<void>;
+   logout: () => Promise<void>;
+   getToken: () => Promise<string | null>;
+   setUserRole: (role: AppRole, department?: string) => void;
+ }
+ 
+-// ─── Context ─────────────────────────────────────────────────────────────────
+ const AuthContext = createContext<AuthContextType | null>(null);
+ 
+ export function useAuth(): AuthContextType {
+@@ -37,136 +79,125 @@ export function useAuth(): AuthContextType {
+   return ctx;
+ }
+ 
+-// ─── Provider ────────────────────────────────────────────────────────────────
++// ─── Provider ─────────────────────────────────────────────────────────────────
+ export function AuthProvider({ children }: { children: ReactNode }) {
+   const [msalAccount, setMsalAccount] = useState<AccountInfo | null>(null);
+   const [appUser, setAppUser] = useState<AppUser | null>(null);
+   const [accessToken, setAccessToken] = useState<string | null>(null);
+   const [isLoading, setIsLoading] = useState(true);
++  const [isAccessDenied, setIsAccessDenied] = useState(false);
+ 
+-  // On mount — initialize MSAL and restore any existing session
+   useEffect(() => {
+     const init = async () => {
+       await msalInstance.initialize();
+-
+-      // Handle redirect response (for redirect flow, if used)
+       await msalInstance.handleRedirectPromise();
+-
+       const accounts = msalInstance.getAllAccounts();
+       if (accounts.length > 0) {
+         const account = accounts[0];
+         setMsalAccount(account);
+         await hydrateAppUser(account);
+       }
+-
+       setIsLoading(false);
+     };
+-
+-    init().catch((err) => {
+-      console.error('MSAL init error:', err);
+-      setIsLoading(false);
+-    });
++    init().catch(() => setIsLoading(false));
+   }, []);
+ 
+-  // ── Hydrate AppUser from MSAL account + localStorage role ─────────────────
+-  // Azure Entra ID provides identity. App role is stored in backend/localStorage.
+   const hydrateAppUser = async (account: AccountInfo) => {
+-    const storedRole = localStorage.getItem(`role_${account.localAccountId}`) as AppRole | null;
+-    const storedDept = localStorage.getItem(`dept_${account.localAccountId}`) || undefined;
++    const email = account.username;
++
++    // ── Check allowlist ───────────────────────────────────────────────────
++    const allowedEntry = isEmailAllowed(email);
++
++    // Bootstrap: if allowlist is completely empty, the first user becomes admin
++    const allUsers = getAllowedUsers();
++    if (allUsers.length === 0) {
++      const bootstrapAdmin: AllowedUser = {
++        email,
++        role: 'admin',
++        addedAt: new Date().toISOString(),
++      };
++      addAllowedUser(bootstrapAdmin);
++    } else if (!allowedEntry) {
++      // Email not on allowlist — deny access
++      setIsAccessDenied(true);
++      return;
++    }
++
++    setIsAccessDenied(false);
+ 
++    const entry = isEmailAllowed(email)!;
+     const user: AppUser = {
+       id: account.localAccountId,
+-      email: account.username,
+-      name: account.name || account.username,
+-      role: storedRole || 'requestor', // Default: requestor until admin assigns a role
+-      department: storedDept,
++      email,
++      name: account.name || email,
++      role: entry.role,
++      department: entry.department,
+     };
+ 
+     setAppUser(user);
+ 
+-    // Silently acquire a token for API calls
+     try {
+-      const result = await msalInstance.acquireTokenSilent({
+-        ...loginRequest,
+-        account,
+-      });
++      const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account });
+       setAccessToken(result.accessToken);
++      localStorage.setItem('msal_access_token', result.accessToken);
+     } catch {
+-      console.warn('Silent token acquisition failed — user may need to re-authenticate');
++      console.warn('Silent token acquisition failed');
+     }
+   };
+ 
+-  // ── Login ─────────────────────────────────────────────────────────────────
+   const login = async () => {
+-    try {
+-      const result: AuthenticationResult = await msalInstance.loginPopup(loginRequest);
+-      setMsalAccount(result.account);
+-      setAccessToken(result.accessToken);
+-      await hydrateAppUser(result.account);
+-    } catch (err) {
+-      console.error('Login failed:', err);
+-      throw err;
+-    }
++    const result: AuthenticationResult = await msalInstance.loginPopup(loginRequest);
++    setMsalAccount(result.account);
++    setAccessToken(result.accessToken);
++    localStorage.setItem('msal_access_token', result.accessToken);
++    await hydrateAppUser(result.account);
+   };
+ 
+-  // ── Logout ────────────────────────────────────────────────────────────────
+   const logout = async () => {
+-    if (msalAccount) {
+-      await msalInstance.logoutPopup({ account: msalAccount });
+-    }
++    if (msalAccount) await msalInstance.logoutPopup({ account: msalAccount });
+     setMsalAccount(null);
+     setAppUser(null);
+     setAccessToken(null);
++    setIsAccessDenied(false);
++    localStorage.removeItem('msal_access_token');
+   };
+ 
+-  // ── Get fresh token (called by api.ts before each request) ────────────────
+   const getToken = async (): Promise<string | null> => {
+     if (!msalAccount) return null;
+     try {
+-      const result = await msalInstance.acquireTokenSilent({
+-        ...loginRequest,
+-        account: msalAccount,
+-      });
++      const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalAccount });
+       setAccessToken(result.accessToken);
++      localStorage.setItem('msal_access_token', result.accessToken);
+       return result.accessToken;
+     } catch {
+-      // Silent failed — prompt interactive login
+       try {
+-        const result = await msalInstance.acquireTokenPopup({
+-          ...loginRequest,
+-          account: msalAccount,
+-        });
++        const result = await msalInstance.acquireTokenPopup({ ...loginRequest, account: msalAccount });
+         setAccessToken(result.accessToken);
++        localStorage.setItem('msal_access_token', result.accessToken);
+         return result.accessToken;
+-      } catch (err) {
+-        console.error('Token refresh failed:', err);
+-        return null;
+-      }
++      } catch { return null; }
+     }
+   };
+ 
+-  // ── Set role (called by admin panel after assigning a role) ───────────────
+   const setUserRole = (role: AppRole, department?: string) => {
+-    if (!msalAccount) return;
+-    localStorage.setItem(`role_${msalAccount.localAccountId}`, role);
+-    if (department) localStorage.setItem(`dept_${msalAccount.localAccountId}`, department);
+-    setAppUser((prev) => prev ? { ...prev, role, department } : prev);
++    if (!appUser) return;
++    addAllowedUser({ email: appUser.email, role, department, addedAt: new Date().toISOString() });
++    setAppUser(prev => prev ? { ...prev, role, department } : prev);
+   };
+ 
+   return (
+-    <AuthContext.Provider
+-      value={{
+-        user: appUser,
+-        msalAccount,
+-        accessToken,
+-        isAuthenticated: !!msalAccount,
+-        isLoading,
+-        login,
+-        logout,
+-        getToken,
+-        setUserRole,
+-      }}
+-    >
++    <AuthContext.Provider value={{
++      user: appUser,
++      msalAccount,
++      accessToken,
++      isAuthenticated: !!msalAccount && !isAccessDenied,
++      isLoading,
++      isAccessDenied,
++      login,
++      logout,
++      getToken,
++      setUserRole,
++    }}>
+       {children}
+     </AuthContext.Provider>
+   );
+-- 
+2.43.0
+
