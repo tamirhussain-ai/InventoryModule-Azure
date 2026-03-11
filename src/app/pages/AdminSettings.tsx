@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Switch } from '../components/ui/switch';
 import { getUsers, getCategories, getLocations, createCategory, createLocation, updateCategory, updateLocation, createUser, updateUser, deleteUser, getEmailSettings, updateEmailSettings, getEmailPreferences, updateEmailPreferences, getRequestorCategorySettings, updateRequestorCategorySettings, getAppSettings, updateAppSettings, purgeInactiveItems, getEmailTemplates, updateEmailTemplate, resetEmailTemplate, getEmailTemplatePreview, getWorkflowSettings, updateWorkflowSettings, forcePasswordReset, getSecuritySettings, updateSecuritySettings } from '../services/api';
 import { Users, Tag, MapPin, Plus, Pencil, UserCog, LogOut, Mail, Shield, Settings, Trash2, AlertTriangle, GitBranch, CheckCircle2, Clock, Eye, EyeOff, Copy, KeyRound, RotateCcw, Lock, Timer } from 'lucide-react';
+import AllowlistManager from '../components/AllowlistManager';
 import { toast } from 'sonner';
 import { AuthService } from '../services/auth';
 import { Alert, AlertDescription } from '../components/ui/alert';
@@ -361,6 +362,7 @@ export default function AdminSettings() {
             <TabsTrigger key="security" value="security">Security</TabsTrigger>
             {actualRole === 'admin' && <TabsTrigger key="csv-upload" value="csv-upload">CSV Upload</TabsTrigger>}
             {actualRole === 'admin' && <TabsTrigger key="impersonate" value="impersonate">Role Impersonation</TabsTrigger>}
+            {actualRole === 'admin' && <TabsTrigger key="access-control" value="access-control">Access Control</TabsTrigger>}
           </TabsList>
 
           <TabsContent key="general" value="general">
@@ -1271,6 +1273,12 @@ export default function AdminSettings() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+          )}
+
+          {actualRole === 'admin' && (
+            <TabsContent key="access-control" value="access-control">
+              <AllowlistManager />
             </TabsContent>
           )}
         </Tabs>

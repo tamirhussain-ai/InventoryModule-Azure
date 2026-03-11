@@ -2,33 +2,75 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { PublicClientApplication, AccountInfo, AuthenticationResult } from '@azure/msal-browser';
 import { msalConfig, loginRequest } from './msalConfig';
 
-// ─── MSAL Instance (singleton) ──────────────────────────────────────────────
 export const msalInstance = new PublicClientApplication(msalConfig);
 
-// ─── Types ───────────────────────────────────────────────────────────────────
 export type AppRole = 'admin' | 'fulfillment' | 'requestor' | 'approver';
 
 export interface AppUser {
-  id: string;           // Azure Object ID
+  id: string;
   email: string;
   name: string;
   role: AppRole;
   department?: string;
 }
 
+// ─── Allowlist helpers (stored in localStorage for Phase 1) ──────────────────
+// In Phase 2 this moves to the database.
+const ALLOWLIST_KEY = 'shc_allowed_emails';
+
+export interface AllowedUser {
+  email: string;
+  role: AppRole;
+  department?: string;
+  addedAt: string;
+}
+
+export function getAllowedUsers(): AllowedUser[] {
+  try {
+    const raw = localStorage.getItem(ALLOWLIST_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+export function saveAllowedUsers(users: AllowedUser[]) {
+  localStorage.setItem(ALLOWLIST_KEY, JSON.stringify(users));
+}
+
+export function isEmailAllowed(email: string): AllowedUser | null {
+  const list = getAllowedUsers();
+  return list.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
+}
+
+export function addAllowedUser(user: AllowedUser) {
+  const list = getAllowedUsers();
+  const exists = list.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
+  if (exists >= 0) {
+    list[exists] = user; // update existing
+  } else {
+    list.push(user);
+  }
+  saveAllowedUsers(list);
+}
+
+export function removeAllowedUser(email: string) {
+  const list = getAllowedUsers().filter(u => u.email.toLowerCase() !== email.toLowerCase());
+  saveAllowedUsers(list);
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface AuthContextType {
   user: AppUser | null;
   msalAccount: AccountInfo | null;
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isAccessDenied: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
   getToken: () => Promise<string | null>;
   setUserRole: (role: AppRole, department?: string) => void;
 }
 
-// ─── Context ─────────────────────────────────────────────────────────────────
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function useAuth(): AuthContextType {
@@ -37,136 +79,125 @@ export function useAuth(): AuthContextType {
   return ctx;
 }
 
-// ─── Provider ────────────────────────────────────────────────────────────────
+// ─── Provider ─────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [msalAccount, setMsalAccount] = useState<AccountInfo | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAccessDenied, setIsAccessDenied] = useState(false);
 
-  // On mount — initialize MSAL and restore any existing session
   useEffect(() => {
     const init = async () => {
       await msalInstance.initialize();
-
-      // Handle redirect response (for redirect flow, if used)
       await msalInstance.handleRedirectPromise();
-
       const accounts = msalInstance.getAllAccounts();
       if (accounts.length > 0) {
         const account = accounts[0];
         setMsalAccount(account);
         await hydrateAppUser(account);
       }
-
       setIsLoading(false);
     };
-
-    init().catch((err) => {
-      console.error('MSAL init error:', err);
-      setIsLoading(false);
-    });
+    init().catch(() => setIsLoading(false));
   }, []);
 
-  // ── Hydrate AppUser from MSAL account + localStorage role ─────────────────
-  // Azure Entra ID provides identity. App role is stored in backend/localStorage.
   const hydrateAppUser = async (account: AccountInfo) => {
-    const storedRole = localStorage.getItem(`role_${account.localAccountId}`) as AppRole | null;
-    const storedDept = localStorage.getItem(`dept_${account.localAccountId}`) || undefined;
+    const email = account.username;
 
+    // ── Check allowlist ───────────────────────────────────────────────────
+    const allowedEntry = isEmailAllowed(email);
+
+    // Bootstrap: if allowlist is completely empty, the first user becomes admin
+    const allUsers = getAllowedUsers();
+    if (allUsers.length === 0) {
+      const bootstrapAdmin: AllowedUser = {
+        email,
+        role: 'admin',
+        addedAt: new Date().toISOString(),
+      };
+      addAllowedUser(bootstrapAdmin);
+    } else if (!allowedEntry) {
+      // Email not on allowlist — deny access
+      setIsAccessDenied(true);
+      return;
+    }
+
+    setIsAccessDenied(false);
+
+    const entry = isEmailAllowed(email)!;
     const user: AppUser = {
       id: account.localAccountId,
-      email: account.username,
-      name: account.name || account.username,
-      role: storedRole || 'requestor', // Default: requestor until admin assigns a role
-      department: storedDept,
+      email,
+      name: account.name || email,
+      role: entry.role,
+      department: entry.department,
     };
 
     setAppUser(user);
 
-    // Silently acquire a token for API calls
     try {
-      const result = await msalInstance.acquireTokenSilent({
-        ...loginRequest,
-        account,
-      });
+      const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account });
       setAccessToken(result.accessToken);
+      localStorage.setItem('msal_access_token', result.accessToken);
     } catch {
-      console.warn('Silent token acquisition failed — user may need to re-authenticate');
+      console.warn('Silent token acquisition failed');
     }
   };
 
-  // ── Login ─────────────────────────────────────────────────────────────────
   const login = async () => {
-    try {
-      const result: AuthenticationResult = await msalInstance.loginPopup(loginRequest);
-      setMsalAccount(result.account);
-      setAccessToken(result.accessToken);
-      await hydrateAppUser(result.account);
-    } catch (err) {
-      console.error('Login failed:', err);
-      throw err;
-    }
+    const result: AuthenticationResult = await msalInstance.loginPopup(loginRequest);
+    setMsalAccount(result.account);
+    setAccessToken(result.accessToken);
+    localStorage.setItem('msal_access_token', result.accessToken);
+    await hydrateAppUser(result.account);
   };
 
-  // ── Logout ────────────────────────────────────────────────────────────────
   const logout = async () => {
-    if (msalAccount) {
-      await msalInstance.logoutPopup({ account: msalAccount });
-    }
+    if (msalAccount) await msalInstance.logoutPopup({ account: msalAccount });
     setMsalAccount(null);
     setAppUser(null);
     setAccessToken(null);
+    setIsAccessDenied(false);
+    localStorage.removeItem('msal_access_token');
   };
 
-  // ── Get fresh token (called by api.ts before each request) ────────────────
   const getToken = async (): Promise<string | null> => {
     if (!msalAccount) return null;
     try {
-      const result = await msalInstance.acquireTokenSilent({
-        ...loginRequest,
-        account: msalAccount,
-      });
+      const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalAccount });
       setAccessToken(result.accessToken);
+      localStorage.setItem('msal_access_token', result.accessToken);
       return result.accessToken;
     } catch {
-      // Silent failed — prompt interactive login
       try {
-        const result = await msalInstance.acquireTokenPopup({
-          ...loginRequest,
-          account: msalAccount,
-        });
+        const result = await msalInstance.acquireTokenPopup({ ...loginRequest, account: msalAccount });
         setAccessToken(result.accessToken);
+        localStorage.setItem('msal_access_token', result.accessToken);
         return result.accessToken;
-      } catch (err) {
-        console.error('Token refresh failed:', err);
-        return null;
-      }
+      } catch { return null; }
     }
   };
 
-  // ── Set role (called by admin panel after assigning a role) ───────────────
   const setUserRole = (role: AppRole, department?: string) => {
-    if (!msalAccount) return;
-    localStorage.setItem(`role_${msalAccount.localAccountId}`, role);
-    if (department) localStorage.setItem(`dept_${msalAccount.localAccountId}`, department);
-    setAppUser((prev) => prev ? { ...prev, role, department } : prev);
+    if (!appUser) return;
+    addAllowedUser({ email: appUser.email, role, department, addedAt: new Date().toISOString() });
+    setAppUser(prev => prev ? { ...prev, role, department } : prev);
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user: appUser,
-        msalAccount,
-        accessToken,
-        isAuthenticated: !!msalAccount,
-        isLoading,
-        login,
-        logout,
-        getToken,
-        setUserRole,
-      }}
-    >
+    <AuthContext.Provider value={{
+      user: appUser,
+      msalAccount,
+      accessToken,
+      isAuthenticated: !!msalAccount && !isAccessDenied,
+      isLoading,
+      isAccessDenied,
+      login,
+      logout,
+      getToken,
+      setUserRole,
+    }}>
       {children}
     </AuthContext.Provider>
   );

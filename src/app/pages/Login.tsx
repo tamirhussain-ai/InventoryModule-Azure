@@ -5,8 +5,8 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { toast } from 'sonner';
 import { Package } from 'lucide-react';
+import AccessDenied from './AccessDenied';
 
-// Microsoft logo SVG
 function MicrosoftLogo() {
   return (
     <svg width="20" height="20" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -20,40 +20,22 @@ function MicrosoftLogo() {
 
 export default function Login() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading, login, user } = useAuth();
+  const { isAuthenticated, isLoading, isAccessDenied, login, user } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (!isLoading && isAuthenticated && user) {
-      redirectToDashboard(user.role);
+      switch (user.role) {
+        case 'admin':       navigate('/admin');       break;
+        case 'fulfillment': navigate('/fulfillment'); break;
+        case 'approver':    navigate('/approver');    break;
+        default:            navigate('/requestor');   break;
+      }
     }
   }, [isAuthenticated, isLoading, user]);
 
-  const redirectToDashboard = (role?: string) => {
-    switch (role) {
-      case 'admin':       navigate('/admin');       break;
-      case 'fulfillment': navigate('/fulfillment'); break;
-      case 'approver':    navigate('/approver');    break;
-      case 'requestor':
-      default:            navigate('/requestor');   break;
-    }
-  };
-
-  const handleLogin = async () => {
-    setSigningIn(true);
-    try {
-      await login();
-      // useEffect above handles redirect once user state is set
-    } catch (error: any) {
-      // User closed popup — don't show an error
-      if (error?.errorCode === 'user_cancelled') return;
-      console.error('Login error:', error);
-      toast.error('Sign in failed. Please try again.');
-    } finally {
-      setSigningIn(false);
-    }
-  };
+  // Show access denied screen if user signed in but isn't on the allowlist
+  if (isAccessDenied) return <AccessDenied />;
 
   if (isLoading) {
     return (
@@ -65,6 +47,18 @@ export default function Login() {
       </div>
     );
   }
+
+  const handleLogin = async () => {
+    setSigningIn(true);
+    try {
+      await login();
+    } catch (error: any) {
+      if (error?.errorCode === 'user_cancelled') return;
+      toast.error('Sign in failed. Please try again.');
+    } finally {
+      setSigningIn(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -78,7 +72,6 @@ export default function Login() {
           <CardTitle className="text-2xl">SHC Inventory System</CardTitle>
           <CardDescription>Sign in with your university Microsoft account</CardDescription>
         </CardHeader>
-
         <CardContent className="pt-4 space-y-4">
           <Button
             onClick={handleLogin}
@@ -89,10 +82,8 @@ export default function Login() {
             <MicrosoftLogo />
             {signingIn ? 'Signing in...' : 'Sign in with Microsoft'}
           </Button>
-
           <p className="text-center text-xs text-gray-500 pt-2">
-            Use your university email (e.g. you@university.edu).<br />
-            Contact your administrator if you need access.
+            Use your university email. Contact your administrator if you need access.
           </p>
         </CardContent>
       </Card>
