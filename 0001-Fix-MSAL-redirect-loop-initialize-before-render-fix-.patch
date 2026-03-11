@@ -1,0 +1,82 @@
+From 2e8d9b80ebfbf7dad50ae96599e2fb40d221063b Mon Sep 17 00:00:00 2001
+From: tamirhussain-ai <tamirhussain@users.noreply.github.com>
+Date: Wed, 11 Mar 2026 22:49:39 +0000
+Subject: [PATCH] =?UTF-8?q?Fix:=20MSAL=20redirect=20loop=20=E2=80=94=20ini?=
+ =?UTF-8?q?tialize=20before=20render,=20fix=20config?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/lib/msalConfig.ts | 29 +++++++++++------------------
+ src/main.tsx          | 12 +++++++-----
+ 2 files changed, 18 insertions(+), 23 deletions(-)
+
+diff --git a/src/lib/msalConfig.ts b/src/lib/msalConfig.ts
+index 0c97245..88c088c 100644
+--- a/src/lib/msalConfig.ts
++++ b/src/lib/msalConfig.ts
+@@ -1,29 +1,22 @@
+-import { Configuration, PopupRequest } from '@azure/msal-browser';
++import { Configuration, PopupRequest, BrowserCacheLocation } from '@azure/msal-browser';
+ 
+-// These values come from your Azure App Registration.
+-// Replace with your actual values from the Azure Portal.
+-// Store them in a .env file — never hardcode in production.
+ export const msalConfig: Configuration = {
+   auth: {
+-    clientId: import.meta.env.VITE_AZURE_CLIENT_ID || 'YOUR_CLIENT_ID',
+-    authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AZURE_TENANT_ID || 'YOUR_TENANT_ID'}`,
+-    redirectUri: import.meta.env.VITE_REDIRECT_URI || window.location.origin,
+-    postLogoutRedirectUri: import.meta.env.VITE_REDIRECT_URI || window.location.origin,
++    clientId: import.meta.env.VITE_AZURE_CLIENT_ID || '',
++    authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AZURE_TENANT_ID || 'common'}`,
++    redirectUri: window.location.origin,
++    postLogoutRedirectUri: window.location.origin,
++    navigateToLoginRequestUrl: false,  // Prevents redirect loop
+   },
+   cache: {
+-    cacheLocation: 'localStorage',
+-    storeAuthStateInCookie: false,
++    cacheLocation: BrowserCacheLocation.LocalStorage,
++    storeAuthStateInCookie: true,  // Helps with Safari/popup issues
++  },
++  system: {
++    allowNativeBroker: false,  // Prevents unexpected redirect behavior
+   },
+ };
+ 
+-// Scopes requested at login — openid/profile/email are standard
+-// Add your API scope here if you register a backend API in Azure
+ export const loginRequest: PopupRequest = {
+   scopes: ['openid', 'profile', 'email', 'User.Read'],
+ };
+-
+-// Optional: if you register your backend as an Azure API,
+-// add the scope here so the frontend can call it with a token:
+-// export const apiRequest: PopupRequest = {
+-//   scopes: [`api://${import.meta.env.VITE_AZURE_CLIENT_ID}/access_as_user`],
+-// };
+diff --git a/src/main.tsx b/src/main.tsx
+index eb07ffb..c355c01 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -1,7 +1,9 @@
++import { createRoot } from "react-dom/client";
++import App from "./app/App.tsx";
++import "./styles/index.css";
++import { msalInstance } from "./lib/authContext";
+ 
+-  import { createRoot } from "react-dom/client";
+-  import App from "./app/App.tsx";
+-  import "./styles/index.css";
+-
++// Initialize MSAL before rendering the app to prevent redirect loops
++msalInstance.initialize().then(() => {
+   createRoot(document.getElementById("root")!).render(<App />);
+-  
+\ No newline at end of file
++});
+-- 
+2.43.0
+
