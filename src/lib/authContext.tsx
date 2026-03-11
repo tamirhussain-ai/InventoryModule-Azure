@@ -82,13 +82,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAccessDenied, setIsAccessDenied] = useState(false);
 
   useEffect(() => {
-    // msalInstance is already initialized in main.tsx before render
     const accounts = msalInstance.getAllAccounts();
+    console.log('[Auth] Accounts found in cache:', accounts.length);
+    console.log('[Auth] Allowlist:', getAllowedUsers());
     if (accounts.length > 0) {
       const account = accounts[0];
+      console.log('[Auth] Auto-logging in with cached account:', account.username);
       setMsalAccount(account);
       hydrateAppUser(account);
     } else {
+      console.log('[Auth] No cached account — showing login page');
       setIsLoading(false);
     }
   }, []);

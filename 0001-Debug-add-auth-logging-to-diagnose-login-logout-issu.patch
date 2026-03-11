@@ -1,0 +1,34 @@
+From 2684fa9f7e1e4a0fda504ecffe971f5ddaa9a76b Mon Sep 17 00:00:00 2001
+From: tamirhussain-ai <tamirhussain@users.noreply.github.com>
+Date: Wed, 11 Mar 2026 23:19:18 +0000
+Subject: [PATCH] Debug: add auth logging to diagnose login/logout issue
+
+---
+ src/lib/authContext.tsx | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/lib/authContext.tsx b/src/lib/authContext.tsx
+index a825de7..a48bd40 100644
+--- a/src/lib/authContext.tsx
++++ b/src/lib/authContext.tsx
+@@ -82,13 +82,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+   const [isAccessDenied, setIsAccessDenied] = useState(false);
+ 
+   useEffect(() => {
+-    // msalInstance is already initialized in main.tsx before render
+     const accounts = msalInstance.getAllAccounts();
++    console.log('[Auth] Accounts found in cache:', accounts.length);
++    console.log('[Auth] Allowlist:', getAllowedUsers());
+     if (accounts.length > 0) {
+       const account = accounts[0];
++      console.log('[Auth] Auto-logging in with cached account:', account.username);
+       setMsalAccount(account);
+       hydrateAppUser(account);
+     } else {
++      console.log('[Auth] No cached account — showing login page');
+       setIsLoading(false);
+     }
+   }, []);
+-- 
+2.43.0
+
