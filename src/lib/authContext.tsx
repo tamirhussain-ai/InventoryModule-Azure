@@ -132,7 +132,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async () => {
-    const result: AuthenticationResult = await msalInstance.loginPopup(loginRequest);
+    const result: AuthenticationResult = await msalInstance.loginPopup({
+      ...loginRequest,
+      prompt: 'select_account', // Always show account picker
+    });
     setMsalAccount(result.account);
     setAccessToken(result.accessToken);
     localStorage.setItem('msal_access_token', result.accessToken);
@@ -140,20 +143,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    // Clear local storage first
     localStorage.removeItem('msal_access_token');
     localStorage.removeItem('shc_allowed_emails');
 
+    // Clear React state immediately
+    setMsalAccount(null);
+    setAppUser(null);
+    setAccessToken(null);
+    setIsAccessDenied(false);
+
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0) {
-      // Use redirect logout — more reliable than popup across all browsers
-      await msalInstance.logoutRedirect({
-        account: accounts[0],
-        postLogoutRedirectUri: window.location.origin,
-      });
-    } else {
-      window.location.href = '/';
+      try {
+        await msalInstance.logoutPopup({
+          account: accounts[0],
+          postLogoutRedirectUri: window.location.origin,
+        });
+      } catch {
+        // Popup blocked or closed — MSAL cache was already cleared, just redirect
+      }
     }
+    window.location.href = '/';
   };
 
   const getToken = async (): Promise<string | null> => {

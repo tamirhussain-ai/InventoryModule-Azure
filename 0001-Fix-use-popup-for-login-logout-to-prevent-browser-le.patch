@@ -1,0 +1,81 @@
+From 3ffd06012d93304c433d64fc6afd759cffe13cee Mon Sep 17 00:00:00 2001
+From: tamirhussain-ai <tamirhussain@users.noreply.github.com>
+Date: Wed, 11 Mar 2026 23:27:27 +0000
+Subject: [PATCH] Fix: use popup for login/logout to prevent browser leave-page
+ warning
+
+---
+ src/lib/authContext.tsx | 28 +++++++++++++++++++---------
+ src/main.tsx            |  4 +---
+ 2 files changed, 20 insertions(+), 12 deletions(-)
+
+diff --git a/src/lib/authContext.tsx b/src/lib/authContext.tsx
+index a48bd40..d3009d1 100644
+--- a/src/lib/authContext.tsx
++++ b/src/lib/authContext.tsx
+@@ -132,7 +132,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+   };
+ 
+   const login = async () => {
+-    const result: AuthenticationResult = await msalInstance.loginPopup(loginRequest);
++    const result: AuthenticationResult = await msalInstance.loginPopup({
++      ...loginRequest,
++      prompt: 'select_account', // Always show account picker
++    });
+     setMsalAccount(result.account);
+     setAccessToken(result.accessToken);
+     localStorage.setItem('msal_access_token', result.accessToken);
+@@ -140,20 +143,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+   };
+ 
+   const logout = async () => {
+-    // Clear local storage first
+     localStorage.removeItem('msal_access_token');
+     localStorage.removeItem('shc_allowed_emails');
+ 
++    // Clear React state immediately
++    setMsalAccount(null);
++    setAppUser(null);
++    setAccessToken(null);
++    setIsAccessDenied(false);
++
+     const accounts = msalInstance.getAllAccounts();
+     if (accounts.length > 0) {
+-      // Use redirect logout — more reliable than popup across all browsers
+-      await msalInstance.logoutRedirect({
+-        account: accounts[0],
+-        postLogoutRedirectUri: window.location.origin,
+-      });
+-    } else {
+-      window.location.href = '/';
++      try {
++        await msalInstance.logoutPopup({
++          account: accounts[0],
++          postLogoutRedirectUri: window.location.origin,
++        });
++      } catch {
++        // Popup blocked or closed — MSAL cache was already cleared, just redirect
++      }
+     }
++    window.location.href = '/';
+   };
+ 
+   const getToken = async (): Promise<string | null> => {
+diff --git a/src/main.tsx b/src/main.tsx
+index 6c6ec4d..83d533c 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -3,9 +3,7 @@ import App from "./app/App.tsx";
+ import "./styles/index.css";
+ import { msalInstance } from "./lib/authContext";
+ 
+-// Initialize MSAL and handle any redirect responses before rendering
++// Initialize MSAL before rendering — popup flow, no redirects
+ msalInstance.initialize().then(() => {
+-  return msalInstance.handleRedirectPromise();
+-}).then(() => {
+   createRoot(document.getElementById("root")!).render(<App />);
+ });
+-- 
+2.43.0
+
