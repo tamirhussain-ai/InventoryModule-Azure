@@ -295,7 +295,7 @@ export default function Reports() {
                         {stock.filter(s => items.find(i => i.id === s.itemId)).map((s) => {
                           const item = items.find(i => i.id === s.itemId);
                           return (
-                            <tr key={s.id} className="border-b">
+                            <tr key={s.itemId || s.id} className="border-b">
                               <td className="py-3 px-4">{item?.name}</td>
                               <td className="py-3 px-4">{item?.sku || 'N/A'}</td>
                               <td className="py-3 px-4">{item?.category}</td>
@@ -416,8 +416,8 @@ export default function Reports() {
                             {new Date(movementsEndDate).toLocaleDateString()}
                           </p>
                         </div>
-                        {filteredMovements.slice(0, 200).map((movement) => (
-                          <div key={movement.id} className="border-b py-3">
+                        {filteredMovements.slice(0, 200).map((movement, index) => (
+                          <div key={movement.id || `movement-${index}`} className="border-b py-3">
                             <div className="flex items-center justify-between">
                               <div>
                                 <p className="text-sm font-medium text-gray-900">
@@ -694,7 +694,7 @@ export default function Reports() {
                             {new Date(auditEndDate).toLocaleDateString()}
                           </p>
                         </div>
-                        {filteredAuditLog.slice(0, 200).map((entry) => {
+                        {filteredAuditLog.slice(0, 200).map((entry, index) => {
                           // Format action description
                           const actionDescriptions: any = {
                             'create': 'Created',
@@ -711,7 +711,7 @@ export default function Reports() {
                           const entityTypeText = entry.entityType.charAt(0).toUpperCase() + entry.entityType.slice(1);
                           
                           return (
-                            <div key={entry.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                            <div key={entry.id || `audit-${index}`} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
                                   <div className="flex items-center space-x-2 mb-1">
