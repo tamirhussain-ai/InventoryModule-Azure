@@ -6,14 +6,14 @@ export const msalConfig: Configuration = {
     authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AZURE_TENANT_ID || 'common'}`,
     redirectUri: window.location.origin,
     postLogoutRedirectUri: window.location.origin,
-    navigateToLoginRequestUrl: false,  // Prevents redirect loop
+    navigateToLoginRequestUrl: false,
   },
   cache: {
     cacheLocation: BrowserCacheLocation.LocalStorage,
-    storeAuthStateInCookie: true,  // Helps with Safari/popup issues
+    storeAuthStateInCookie: true,
   },
   system: {
-    allowNativeBroker: false,  // Prevents unexpected redirect behavior
+    allowNativeBroker: false,
   },
 };
 

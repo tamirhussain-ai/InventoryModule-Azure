@@ -137,25 +137,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    // Clear all local state first
-    setMsalAccount(null);
-    setAppUser(null);
-    setAccessToken(null);
-    setIsAccessDenied(false);
+    // Clear local storage first
     localStorage.removeItem('msal_access_token');
+    localStorage.removeItem('shc_allowed_emails');
 
-    // Clear MSAL cache without a popup/redirect
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0) {
-      try {
-        await msalInstance.logoutPopup({
-          account: accounts[0],
-          mainWindowRedirectUri: window.location.origin, // stay on same page
-        });
-      } catch {
-        // If popup fails, MSAL cache is already cleared above — just reload
-        window.location.href = '/';
-      }
+      // Use redirect logout — more reliable than popup across all browsers
+      await msalInstance.logoutRedirect({
+        account: accounts[0],
+        postLogoutRedirectUri: window.location.origin,
+      });
     } else {
       window.location.href = '/';
     }
