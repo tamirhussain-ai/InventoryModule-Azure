@@ -1,0 +1,44 @@
+From 716c39ec2164985b34f18034ffffd6a594152cb8 Mon Sep 17 00:00:00 2001
+From: tamirhussain-ai <tamirhussain@users.noreply.github.com>
+Date: Wed, 11 Mar 2026 23:33:05 +0000
+Subject: [PATCH] Fix: add COOP headers to allow MSAL popup auth in dev
+
+---
+ vite.config.ts | 14 +++++++++-----
+ 1 file changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/vite.config.ts b/vite.config.ts
+index 4ccceb0..6dcbd3d 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -5,18 +5,22 @@ import react from '@vitejs/plugin-react'
+ 
+ export default defineConfig({
+   plugins: [
+-    // The React and Tailwind plugins are both required for Make, even if
+-    // Tailwind is not being actively used – do not remove them
+     react(),
+     tailwindcss(),
+   ],
+   resolve: {
+     alias: {
+-      // Alias @ to the src directory
+       '@': path.resolve(__dirname, './src'),
+     },
+   },
+-
+-  // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
+   assetsInclude: ['**/*.svg', '**/*.csv'],
++
++  // Required for MSAL popup auth to work in development
++  // Without these headers, Chrome blocks the popup from communicating back
++  server: {
++    headers: {
++      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
++      'Cross-Origin-Embedder-Policy': 'unsafe-none',
++    },
++  },
+ })
+-- 
+2.43.0
+
