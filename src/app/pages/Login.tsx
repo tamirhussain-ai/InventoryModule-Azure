@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../lib/authContext';
+import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Package } from 'lucide-react';
@@ -18,7 +19,28 @@ function MicrosoftLogo() {
 
 export default function Login() {
   const { isLoading, isAuthenticated, isAccessDenied, login, user } = useAuth();
+  const navigate = useNavigate();
   const [signingIn, setSigningIn] = useState(false);
+
+  useEffect(() => {
+    if (isLoading || !isAuthenticated) return;
+
+    const role = user?.role || 'requestor';
+    switch (role) {
+      case 'admin':
+        navigate('/admin', { replace: true });
+        break;
+      case 'fulfillment':
+        navigate('/fulfillment', { replace: true });
+        break;
+      case 'approver':
+        navigate('/approver', { replace: true });
+        break;
+      default:
+        navigate('/requestor', { replace: true });
+        break;
+    }
+  }, [isLoading, isAuthenticated, user, navigate]);
 
   // Already authenticated — routes.tsx loader handles redirect
   // but as a fallback, show loading while we wait
