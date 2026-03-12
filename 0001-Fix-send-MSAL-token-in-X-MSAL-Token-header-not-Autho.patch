@@ -1,0 +1,60 @@
+From c0da3ea019845dbc6b053a98c43f01f4bddf32d7 Mon Sep 17 00:00:00 2001
+From: tamirhussain-ai <tamirhussain@users.noreply.github.com>
+Date: Thu, 12 Mar 2026 02:10:31 +0000
+Subject: [PATCH] Fix: send MSAL token in X-MSAL-Token header, not
+ Authorization
+
+---
+ src/lib/authContext.tsx             |  3 ++-
+ supabase/functions/server/index.tsx | 12 ++++++------
+ 2 files changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/src/lib/authContext.tsx b/src/lib/authContext.tsx
+index e61660a..2f902a4 100644
+--- a/src/lib/authContext.tsx
++++ b/src/lib/authContext.tsx
+@@ -72,7 +72,8 @@ async function exchangeMsalToken(msalAccessToken: string): Promise<{ user: any;
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json',
+-        'Authorization': `Bearer ${msalAccessToken}`,
++        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
++        'X-MSAL-Token': msalAccessToken,
+       },
+     });
+     if (!res.ok) {
+diff --git a/supabase/functions/server/index.tsx b/supabase/functions/server/index.tsx
+index c439560..f758b6d 100644
+--- a/supabase/functions/server/index.tsx
++++ b/supabase/functions/server/index.tsx
+@@ -27,7 +27,7 @@ app.use(
+   "/*",
+   cors({
+     origin: "*",
+-    allowHeaders: ["Content-Type", "Authorization", "X-Session-Token"],
++    allowHeaders: ["Content-Type", "Authorization", "X-Session-Token", "X-MSAL-Token"],
+     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+     exposeHeaders: ["Content-Length"],
+     maxAge: 600,
+@@ -633,13 +633,13 @@ app.post("/make-server-5ec3cec0/auth/signout", async (c) => {
+ 
+ app.post("/make-server-5ec3cec0/auth/msal-signin", async (c) => {
+   try {
+-    const authHeader = c.req.header('Authorization');
+-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+-      return c.json({ error: 'MSAL access token required' }, 401);
++    // MSAL token comes in X-MSAL-Token header
++    // Authorization header is reserved for Supabase anon key (gateway requirement)
++    const msalToken = c.req.header('X-MSAL-Token');
++    if (!msalToken) {
++      return c.json({ error: 'X-MSAL-Token header required' }, 401);
+     }
+ 
+-    const msalToken = authHeader.split(' ')[1];
+-
+     // Verify the MSAL token by calling Microsoft Graph /me
+     const graphRes = await fetch('https://graph.microsoft.com/v1.0/me', {
+       headers: { 'Authorization': `Bearer ${msalToken}` },
+-- 
+2.43.0
+
