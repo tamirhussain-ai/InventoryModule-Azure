@@ -22,6 +22,7 @@ import Bins from "./pages/Bins";
 import Lots from "./pages/Lots";
 import Approvals from "./pages/Approvals";
 import NotFound from "./pages/NotFound";
+import Debug from "./pages/Debug";
 import { msalInstance, getAllowedUsers, isEmailAllowed } from "../lib/authContext";
 
 function HydrateFallback() {
@@ -101,6 +102,7 @@ export const router = createBrowserRouter([
       { path: "bins",            Component: Bins,                 loader: protectedLoader },
       { path: "lots",            Component: Lots,                 loader: protectedLoader },
       { path: "approvals",       Component: Approvals,            loader: protectedLoader },
+      { path: "debug",           Component: Debug },
       { path: "*",               Component: NotFound },
     ],
   },
