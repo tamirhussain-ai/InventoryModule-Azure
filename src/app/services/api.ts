@@ -11,7 +11,7 @@ export function getAuthHeaders(): Record<string, string> {
   };
 }
 
-async function fetchAPI(endpoint: string, options: RequestInit = {}) {
+async function fetchAPI(endpoint: string, options: RequestInit = {}, hasRetried = false) {
   await AuthService.getFreshToken();
   const token = AuthService.getAccessToken();
 
@@ -27,9 +27,15 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
 
     if (!response.ok) {
       if (response.status === 401) {
-        await AuthService.signout();
-        window.location.href = '/';
-        throw new Error('Session expired');
+        // Avoid redirect loops: retry once with a freshly acquired token,
+        // then surface the error to the caller instead of force-logging out.
+        if (!hasRetried) {
+          const refreshedToken = await AuthService.getFreshToken();
+          if (refreshedToken) {
+            return fetchAPI(endpoint, options, true);
+          }
+        }
+        throw new Error('Unauthorized');
       }
       const errorText = await response.text();
       let error;
