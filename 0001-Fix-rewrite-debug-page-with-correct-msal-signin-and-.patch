@@ -1,0 +1,380 @@
+From abcd90d9a8afc4a2be66ffaaef9ced13417b4491 Mon Sep 17 00:00:00 2001
+From: tamirhussain-ai <tamirhussain@users.noreply.github.com>
+Date: Thu, 12 Mar 2026 02:14:15 +0000
+Subject: [PATCH] Fix: rewrite debug page with correct msal-signin and session
+ checks
+
+---
+ src/app/pages/Debug.tsx | 313 ++++++++++++++++++++++++++--------------
+ 1 file changed, 202 insertions(+), 111 deletions(-)
+
+diff --git a/src/app/pages/Debug.tsx b/src/app/pages/Debug.tsx
+index dee6294..973e31b 100644
+--- a/src/app/pages/Debug.tsx
++++ b/src/app/pages/Debug.tsx
+@@ -1,160 +1,251 @@
+ import { useState, useEffect } from 'react';
+ import { msalInstance, getAllowedUsers } from '../../lib/authContext';
++import { loginRequest } from '../../lib/msalConfig';
++import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
++import { Button } from '../components/ui/button';
+ 
+-interface TestResult {
+-  name: string;
+-  status: 'pending' | 'pass' | 'fail' | 'info';
++const API_URL = import.meta.env.VITE_API_URL || '';
++const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
++const CLIENT_ID = import.meta.env.VITE_AZURE_CLIENT_ID || '';
++const TENANT_ID = import.meta.env.VITE_AZURE_TENANT_ID || '';
++
++type Status = 'idle' | 'loading' | 'ok' | 'error';
++
++interface Check {
++  label: string;
++  status: Status;
+   detail: string;
+ }
+ 
+-export default function Debug() {
+-  const [results, setResults] = useState<TestResult[]>([]);
+-  const [testing, setTesting] = useState(false);
+-
+-  const update = (name: string, status: TestResult['status'], detail: string) => {
+-    setResults(prev => {
+-      const existing = prev.findIndex(r => r.name === name);
+-      const entry = { name, status, detail };
+-      if (existing >= 0) { const next = [...prev]; next[existing] = entry; return next; }
+-      return [...prev, entry];
+-    });
++function StatusBadge({ status }: { status: Status }) {
++  const map: Record<Status, { label: string; color: string }> = {
++    idle:    { label: 'Not run',  color: 'bg-gray-100 text-gray-600' },
++    loading: { label: 'Testing…', color: 'bg-yellow-100 text-yellow-700' },
++    ok:      { label: '✓ Pass',   color: 'bg-green-100 text-green-700' },
++    error:   { label: '✗ Fail',   color: 'bg-red-100 text-red-700' },
+   };
++  const { label, color } = map[status];
++  return <span className={`text-xs font-medium px-2 py-1 rounded-full ${color}`}>{label}</span>;
++}
++
++const INITIAL_CHECKS: Check[] = [
++  { label: 'VITE_AZURE_CLIENT_ID set',       status: 'idle', detail: '' },
++  { label: 'VITE_AZURE_TENANT_ID set',       status: 'idle', detail: '' },
++  { label: 'VITE_API_URL set',               status: 'idle', detail: '' },
++  { label: 'VITE_SUPABASE_ANON_KEY set',    status: 'idle', detail: '' },
++  { label: 'MSAL initialized',              status: 'idle', detail: '' },
++  { label: 'MSAL cached account',           status: 'idle', detail: '' },
++  { label: 'Backend /auth/msal-signin',     status: 'idle', detail: '' },
++  { label: 'Backend /items (with session)', status: 'idle', detail: '' },
++];
+ 
+-  const runTests = async () => {
+-    setResults([]);
+-    setTesting(true);
++export default function Debug() {
++  const [checks, setChecks] = useState<Check[]>(INITIAL_CHECKS);
++  const [msalLoginStatus, setMsalLoginStatus] = useState<Status>('idle');
++  const [msalLoginDetail, setMsalLoginDetail] = useState('');
+ 
+-    // ── 1. Environment variables ──────────────────────────────────────────
+-    const clientId = import.meta.env.VITE_AZURE_CLIENT_ID;
+-    const tenantId = import.meta.env.VITE_AZURE_TENANT_ID;
+-    const apiUrl = import.meta.env.VITE_API_URL;
+-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
++  const update = (index: number, status: Status, detail: string) =>
++    setChecks(prev => prev.map((c, i) => i === index ? { ...c, status, detail } : c));
+ 
+-    update('ENV: VITE_AZURE_CLIENT_ID', clientId ? 'pass' : 'fail', clientId ? `✓ Set (${clientId.substring(0,8)}...)` : '✗ Missing from .env');
+-    update('ENV: VITE_AZURE_TENANT_ID', tenantId ? 'pass' : 'fail', tenantId ? `✓ Set (${tenantId.substring(0,8)}...)` : '✗ Missing from .env');
+-    update('ENV: VITE_API_URL', apiUrl ? 'pass' : 'fail', apiUrl ? `✓ ${apiUrl}` : '✗ Missing from .env');
+-    update('ENV: VITE_SUPABASE_ANON_KEY', anonKey ? 'pass' : 'fail', anonKey ? `✓ Set (${anonKey.substring(0,20)}...)` : '✗ Missing from .env');
++  useEffect(() => { runChecks(); }, []);
+ 
+-    // ── 2. MSAL state ────────────────────────────────────────────────────
+-    const accounts = msalInstance.getAllAccounts();
+-    update('MSAL: Cached accounts', 'info', `${accounts.length} account(s) in cache${accounts.length > 0 ? ': ' + accounts.map(a => a.username).join(', ') : ''}`);
++  const runChecks = async () => {
++    // Reset all
++    setChecks(INITIAL_CHECKS);
++
++    // 0 - Client ID
++    update(0, CLIENT_ID && !CLIENT_ID.includes('your') ? 'ok' : 'error',
++      CLIENT_ID ? CLIENT_ID.substring(0, 8) + '…' : 'Missing in .env');
++
++    // 1 - Tenant ID
++    update(1, TENANT_ID && !TENANT_ID.includes('your') ? 'ok' : 'error',
++      TENANT_ID ? TENANT_ID.substring(0, 8) + '…' : 'Missing in .env');
++
++    // 2 - API URL
++    update(2, API_URL ? 'ok' : 'error',
++      API_URL ? API_URL.substring(0, 45) + '…' : 'Missing VITE_API_URL in .env');
+ 
+-    const allowlist = getAllowedUsers();
+-    update('Auth: Allowlist', allowlist.length > 0 ? 'pass' : 'info', 
+-      allowlist.length > 0 ? `${allowlist.length} user(s): ${allowlist.map(u => `${u.email} (${u.role})`).join(', ')}` : 'Empty — first login will bootstrap as admin');
++    // 3 - Supabase Anon Key
++    update(3, SUPABASE_ANON_KEY && SUPABASE_ANON_KEY.length > 20 ? 'ok' : 'error',
++      SUPABASE_ANON_KEY ? SUPABASE_ANON_KEY.substring(0, 12) + '…' : 'Missing in .env');
+ 
+-    // ── 3. MSAL configuration ────────────────────────────────────────────
++    // 4 - MSAL initialized
+     try {
+-      const config = (msalInstance as any).config;
+-      const redirectUri = config?.auth?.redirectUri || window.location.origin;
+-      update('MSAL: Config', 'pass', `Redirect URI: ${redirectUri}`);
+-    } catch {
+-      update('MSAL: Config', 'info', `Redirect URI: ${window.location.origin}`);
++      msalInstance.getAllAccounts();
++      update(4, 'ok', 'MSAL ready');
++    } catch (e: any) {
++      update(4, 'error', e.message);
+     }
+ 
+-    // ── 4. Supabase API connection ────────────────────────────────────────
+-    if (apiUrl && anonKey) {
+-      update('API: Connecting...', 'pending', 'Testing backend connection...');
++    // 5 - Cached account
++    const accounts = msalInstance.getAllAccounts();
++    if (accounts.length > 0) {
++      update(5, 'ok', accounts[0].username);
++    } else {
++      update(5, 'idle', 'No cached account — use Test button below to sign in');
++    }
++
++    // 6 - /auth/msal-signin
++    const msalToken = localStorage.getItem('msal_access_token');
++    if (!msalToken) {
++      update(6, 'idle', 'No MSAL token — sign in first using the button below');
++    } else {
++      update(6, 'loading', 'Calling /auth/msal-signin…');
+       try {
+-        const res = await fetch(`${apiUrl}/items?active=true&`, {
++        const res = await fetch(`${API_URL}/auth/msal-signin`, {
++          method: 'POST',
+           headers: {
+             'Content-Type': 'application/json',
+-            'Authorization': `Bearer ${anonKey}`,
++            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
++            'X-MSAL-Token': msalToken,
+           },
+-          signal: AbortSignal.timeout(8000),
+         });
++        const text = await res.text();
+         if (res.ok) {
+-          const data = await res.json();
+-          const count = data?.items?.length ?? JSON.stringify(data).length;
+-          update('API: Supabase Backend', 'pass', `✓ Connected — ${typeof count === 'number' ? count + ' items returned' : 'response received'}`);
++          const json = JSON.parse(text);
++          localStorage.setItem('backend_session_token', json.accessToken);
++          localStorage.setItem('backend_user', JSON.stringify(json.user));
++          update(6, 'ok', `Session created — role: ${json.user?.role}, token: ${json.accessToken?.substring(0, 16)}…`);
+         } else {
+-          const text = await res.text();
+-          update('API: Supabase Backend', 'fail', `✗ HTTP ${res.status}: ${text.substring(0, 120)}`);
++          update(6, 'error', `HTTP ${res.status} — ${text.substring(0, 120)}`);
+         }
+-      } catch (err: any) {
+-        update('API: Supabase Backend', 'fail', `✗ ${err.message}`);
++      } catch (e: any) {
++        update(6, 'error', e.message);
+       }
+-    } else {
+-      update('API: Supabase Backend', 'fail', '✗ Skipped — API_URL or SUPABASE_ANON_KEY missing');
+     }
+ 
+-    // ── 5. MSAL token test (only if logged in) ────────────────────────────
+-    if (accounts.length > 0) {
+-      update('MSAL: Token refresh', 'pending', 'Attempting silent token...');
++    // 7 - /items with session token
++    const sessionToken = localStorage.getItem('backend_session_token');
++    if (!sessionToken) {
++      update(7, 'idle', 'No backend session — need /auth/msal-signin to pass first');
++    } else {
++      update(7, 'loading', 'Fetching /items…');
+       try {
+-        const result = await msalInstance.acquireTokenSilent({
+-          scopes: ['openid', 'profile', 'email', 'User.Read'],
+-          account: accounts[0],
++        const res = await fetch(`${API_URL}/items?active=true`, {
++          headers: {
++            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
++            'X-Session-Token': sessionToken,
++            'Content-Type': 'application/json',
++          },
+         });
+-        update('MSAL: Token refresh', 'pass', `✓ Token acquired, expires: ${new Date(result.expiresOn!).toLocaleTimeString()}`);
+-      } catch (err: any) {
+-        update('MSAL: Token refresh', 'fail', `✗ ${err.message}`);
++        const text = await res.text();
++        if (res.ok) {
++          const json = JSON.parse(text);
++          const count = json.items?.length ?? '?';
++          update(7, 'ok', `HTTP ${res.status} — ${count} items returned`);
++        } else {
++          update(7, 'error', `HTTP ${res.status} — ${text.substring(0, 120)}`);
++        }
++      } catch (e: any) {
++        update(7, 'error', e.message);
+       }
+-    } else {
+-      update('MSAL: Token refresh', 'info', 'Skipped — not logged in');
+     }
+-
+-    // ── 6. Azure redirect URI check ───────────────────────────────────────
+-    const currentOrigin = window.location.origin;
+-    update('Azure: Redirect URI check', 'info', 
+-      `Current origin: ${currentOrigin} — make sure this is added in Azure Portal → App Registration → Authentication → SPA redirect URIs`);
+-
+-    setTesting(false);
+   };
+ 
+-  useEffect(() => { runTests(); }, []);
+-
+-  const colors: Record<TestResult['status'], string> = {
+-    pass: 'bg-green-50 border-green-200 text-green-800',
+-    fail: 'bg-red-50 border-red-200 text-red-800',
+-    info: 'bg-blue-50 border-blue-200 text-blue-800',
+-    pending: 'bg-yellow-50 border-yellow-200 text-yellow-800',
++  const testMsalLogin = async () => {
++    setMsalLoginStatus('loading');
++    setMsalLoginDetail('Opening Microsoft login popup…');
++    // Clear stale MSAL state first
++    Object.keys(localStorage)
++      .filter(k => k.includes('interaction.status') || k.includes('request.initiated') || k.includes('.state.'))
++      .forEach(k => localStorage.removeItem(k));
++    try {
++      const result = await msalInstance.loginPopup({ ...loginRequest, prompt: 'select_account' });
++      localStorage.setItem('msal_access_token', result.accessToken);
++      setMsalLoginStatus('ok');
++      setMsalLoginDetail(`✓ Signed in: ${result.account.username} — re-running checks…`);
++      setTimeout(runChecks, 500);
++    } catch (e: any) {
++      setMsalLoginStatus('error');
++      setMsalLoginDetail(`${e.errorCode || ''}: ${e.message}`);
++    }
+   };
+ 
+-  const icons: Record<TestResult['status'], string> = {
+-    pass: '✓', fail: '✗', info: 'ℹ', pending: '⟳',
+-  };
++  const passed = checks.filter(c => c.status === 'ok').length;
++  const failed = checks.filter(c => c.status === 'error').length;
+ 
+   return (
+     <div className="min-h-screen bg-gray-50 p-6">
+-      <div className="max-w-2xl mx-auto">
+-        <div className="flex items-center justify-between mb-6">
++      <div className="max-w-2xl mx-auto space-y-4">
++        <div className="flex items-center justify-between">
+           <div>
+-            <h1 className="text-2xl font-bold text-gray-900">System Diagnostics</h1>
+-            <p className="text-sm text-gray-500 mt-1">Tests auth, API connection, and environment config</p>
++            <h1 className="text-xl font-bold text-gray-900">System Debug</h1>
++            <p className="text-sm text-gray-500">Tests env vars, MSAL, and backend connection</p>
++          </div>
++          <div className="text-sm">
++            <span className="text-green-600 font-medium">{passed} passed</span>
++            {failed > 0 && <span className="text-red-600 font-medium ml-2">{failed} failed</span>}
+           </div>
+-          <button
+-            onClick={runTests}
+-            disabled={testing}
+-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+-          >
+-            {testing ? 'Running...' : 'Re-run Tests'}
+-          </button>
+         </div>
+ 
+-        <div className="space-y-3">
+-          {results.map(r => (
+-            <div key={r.name} className={`border rounded-lg p-4 ${colors[r.status]}`}>
+-              <div className="flex items-start gap-3">
+-                <span className="font-bold text-lg leading-none mt-0.5">{icons[r.status]}</span>
++        <Card>
++          <CardHeader className="pb-2">
++            <div className="flex items-center justify-between">
++              <CardTitle className="text-sm font-semibold">Automatic Checks</CardTitle>
++              <Button size="sm" variant="outline" onClick={runChecks}>Re-run</Button>
++            </div>
++          </CardHeader>
++          <CardContent className="space-y-0 divide-y">
++            {checks.map((check, i) => (
++              <div key={i} className="flex items-start justify-between py-2.5 gap-4">
+                 <div className="min-w-0">
+-                  <p className="font-semibold text-sm">{r.name}</p>
+-                  <p className="text-sm mt-0.5 break-all">{r.detail}</p>
++                  <p className="text-sm font-medium text-gray-800">{check.label}</p>
++                  {check.detail && (
++                    <p className="text-xs text-gray-500 mt-0.5 font-mono break-all">{check.detail}</p>
++                  )}
+                 </div>
++                <StatusBadge status={check.status} />
+               </div>
+-            </div>
+-          ))}
+-          {results.length === 0 && (
+-            <div className="text-center py-12 text-gray-400">Running tests...</div>
+-          )}
+-        </div>
++            ))}
++          </CardContent>
++        </Card>
++
++        <Card>
++          <CardHeader className="pb-2">
++            <CardTitle className="text-sm font-semibold">Step 1: Sign in with MSAL</CardTitle>
++          </CardHeader>
++          <CardContent className="space-y-3">
++            <p className="text-xs text-gray-500">
++              Signs in via popup and stores the MSAL token, then auto-runs all checks.
++            </p>
++            <Button onClick={testMsalLogin} disabled={msalLoginStatus === 'loading'} size="sm">
++              {msalLoginStatus === 'loading' ? 'Opening popup…' : 'Sign in with Microsoft (Popup)'}
++            </Button>
++            {msalLoginDetail && (
++              <div className={`text-xs font-mono p-2 rounded break-all ${
++                msalLoginStatus === 'ok' ? 'bg-green-50 text-green-700' :
++                msalLoginStatus === 'error' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'
++              }`}>
++                {msalLoginDetail}
++              </div>
++            )}
++          </CardContent>
++        </Card>
++
++        <Card>
++          <CardHeader className="pb-2">
++            <CardTitle className="text-sm font-semibold">Allowlist (localStorage)</CardTitle>
++          </CardHeader>
++          <CardContent>
++            {getAllowedUsers().length === 0 ? (
++              <p className="text-xs text-gray-500">Empty — first login bootstraps as admin</p>
++            ) : (
++              <div className="space-y-1">
++                {getAllowedUsers().map((u, i) => (
++                  <div key={i} className="flex items-center gap-2 text-xs font-mono">
++                    <span className="text-gray-700">{u.email}</span>
++                    <span className="text-gray-400">→</span>
++                    <span className="text-blue-600">{u.role}</span>
++                  </div>
++                ))}
++              </div>
++            )}
++          </CardContent>
++        </Card>
+ 
+-        <div className="mt-6 p-4 bg-gray-100 rounded-lg text-xs text-gray-500">
+-          <p className="font-semibold mb-1">Quick links:</p>
+-          <p>• Azure Portal: <a href="https://portal.azure.com" target="_blank" className="text-blue-600 underline">portal.azure.com</a> → App Registrations → Authentication</p>
+-          <p>• Supabase: <a href="https://supabase.com/dashboard" target="_blank" className="text-blue-600 underline">supabase.com/dashboard</a> → Project Settings → API</p>
+-          <p>• Go back: <a href="/" className="text-blue-600 underline">Home</a></p>
+-        </div>
++        <p className="text-xs text-center text-gray-400">
++          Remove <code>/debug</code> route before going to production
++        </p>
+       </div>
+     </div>
+   );
+-- 
+2.43.0
+
