@@ -537,7 +537,13 @@ app.post("/make-server-5ec3cec0/auth/forgot-password", async (c) => {
   // Repurposed as MSAL signin bridge for Azure migration
   // Accepts X-MSAL-Token, verifies with Microsoft Graph, creates backend session
   try {
-    const msalToken = c.req.header('X-MSAL-Token');
+    // Read body first (must do before any other body reads)
+    let body: any = {};
+    try { body = await c.req.json(); } catch { body = {}; }
+    
+    // Support token in body (preferred, avoids CORS preflight) or header (legacy)
+    const msalToken = c.req.header('X-MSAL-Token') || body?.msalToken || null;
+    
     if (!msalToken) {
       // Legacy no-op for old callers
       return c.json({ success: true, message: 'If an account exists with this email, you will receive a password reset link.' });
@@ -583,6 +589,69 @@ app.post("/make-server-5ec3cec0/auth/forgot-password", async (c) => {
     }
 
     // Create session token
+    const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+    await kv.set(`session:${token}`, {
+      userId: msalId,
+      email,
+      createdAt: new Date().toISOString(),
+    });
+
+    console.log('[msal-signin] Session created for:', email);
+    return c.json({ accessToken: token, user: userProfile });
+
+  } catch (error: any) {
+    console.error('[msal-signin] Error:', error);
+    return c.json({ error: 'MSAL signin failed', details: error.message }, 500);
+  }
+});
+
+// MSAL signin endpoint
+app.post("/make-server-5ec3cec0/auth/msal-signin", async (c) => {
+  try {
+    let body: any = {};
+    try { body = await c.req.json(); } catch { body = {}; }
+    
+    const msalToken = body?.msalToken || c.req.header('X-MSAL-Token') || null;
+    if (!msalToken) {
+      return c.json({ error: 'msalToken required' }, 400);
+    }
+
+    console.log('[msal-signin] Verifying with Microsoft Graph');
+    const graphRes = await fetch('https://graph.microsoft.com/v1.0/me', {
+      headers: { 'Authorization': `Bearer ${msalToken}` },
+    });
+
+    if (!graphRes.ok) {
+      return c.json({ error: 'Invalid MSAL token' }, 401);
+    }
+
+    const graphUser = await graphRes.json();
+    const email = graphUser.mail || graphUser.userPrincipalName;
+    const name = graphUser.displayName || email;
+    const msalId = graphUser.id;
+
+    if (!email) {
+      return c.json({ error: 'Could not retrieve email from Microsoft Graph' }, 400);
+    }
+
+    // Get or create user profile
+    let userProfile = await kv.get(`user:${msalId}`);
+    if (!userProfile) {
+      const allKeys = await kv.list('user:');
+      const isFirstUser = !allKeys || allKeys.length === 0;
+      userProfile = {
+        id: msalId,
+        email,
+        name,
+        role: isFirstUser ? 'admin' : 'requestor',
+        department: '',
+        createdAt: new Date().toISOString(),
+        authProvider: 'msal',
+      };
+      await kv.set(`user:${msalId}`, userProfile);
+    }
+
+    // Create session
     const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
     await kv.set(`session:${token}`, {
       userId: msalId,
@@ -689,79 +758,7 @@ app.post("/make-server-5ec3cec0/auth/signout", async (c) => {
 // verifies the identity with Microsoft Graph,
 // then creates a backend session — bridging MSAL auth to the existing session system.
 
-app.post("/make-server-5ec3cec0/auth/msal-signin", async (c) => {
-  try {
-    // MSAL token comes in X-MSAL-Token header
-    // Authorization header is reserved for Supabase anon key (gateway requirement)
-    const msalToken = c.req.header('X-MSAL-Token');
-    if (!msalToken) {
-      return c.json({ error: 'X-MSAL-Token header required' }, 401);
-    }
 
-    // Verify the MSAL token by calling Microsoft Graph /me
-    const graphRes = await fetch('https://graph.microsoft.com/v1.0/me', {
-      headers: { 'Authorization': `Bearer ${msalToken}` },
-    });
-
-    if (!graphRes.ok) {
-      console.log('Graph verification failed:', graphRes.status);
-      return c.json({ error: 'Invalid MSAL token' }, 401);
-    }
-
-    const graphUser = await graphRes.json();
-    const email = graphUser.mail || graphUser.userPrincipalName;
-    const name = graphUser.displayName || email;
-    const msalId = graphUser.id; // Azure Object ID
-
-    if (!email) {
-      return c.json({ error: 'Could not retrieve email from Microsoft Graph' }, 400);
-    }
-
-    console.log('MSAL signin verified for:', email);
-
-    // Check if user profile exists in KV (keyed by msalId)
-    let userProfile = await kv.get(`user:${msalId}`);
-
-    if (!userProfile) {
-      // Check if there are any users at all (bootstrap first admin)
-      const allUsers = await kv.list('user:');
-      const isFirstUser = !allUsers || allUsers.length === 0;
-      const role = isFirstUser ? 'admin' : 'requestor';
-
-      // Create user profile in KV
-      userProfile = {
-        id: msalId,
-        email,
-        name,
-        role,
-        department: '',
-        createdAt: new Date().toISOString(),
-        authProvider: 'msal',
-      };
-      await kv.set(`user:${msalId}`, userProfile);
-      console.log('Created new user profile:', email, 'role:', role);
-    }
-
-    // Generate a session token and store it
-    const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-    await kv.set(`session:${token}`, {
-      userId: msalId,
-      email,
-      createdAt: new Date().toISOString(),
-    });
-
-    console.log('MSAL session created for:', email);
-
-    return c.json({
-      accessToken: token,
-      user: userProfile,
-    });
-
-  } catch (error: any) {
-    console.error('MSAL signin error:', error);
-    return c.json({ error: 'MSAL signin failed', details: error.message }, 500);
-  }
-});
 
 // ========== ITEM MANAGEMENT ROUTES ==========
 

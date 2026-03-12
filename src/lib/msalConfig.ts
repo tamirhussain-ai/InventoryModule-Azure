@@ -10,7 +10,7 @@ export const msalConfig: Configuration = {
   },
   cache: {
     cacheLocation: BrowserCacheLocation.LocalStorage,
-    storeAuthStateInCookie: true,
+    storeAuthStateInCookie: false,
   },
   system: {
     allowNativeBroker: false,

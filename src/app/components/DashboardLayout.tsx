@@ -47,8 +47,9 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout: msalLogout } = useAuth();
-  const [user, setUser] = useState<User | null>(null);
+  const { logout: msalLogout, user: authUser } = useAuth();
+  // Use auth context user directly — single source of truth
+  const [user, setUser] = useState<User | null>(authUser as User | null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [badgeCounts, setBadgeCounts] = useState<any>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -78,37 +79,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   useEffect(() => {
-    const currentUser = AuthService.getCurrentUser();
-    const token = AuthService.getAccessToken();
-    
-    console.log('DashboardLayout - User loaded:', currentUser?.email, 'Has token:', !!token);
-    
-    if (currentUser) {
-      setUser(currentUser);
+    if (authUser) {
+      setUser(authUser as User);
       loadNotifications();
       loadBadgeCounts();
       loadAppSettings();
-      checkPasswordExpiryStatus();
 
-      // Set up automatic refresh for notifications and badge counts every 60 seconds
       const intervalId = setInterval(() => {
-        // Only refresh if the tab is visible to save resources
         if (document.visibilityState === 'visible') {
-          console.log('Auto-refreshing notifications and badge counts...');
           loadNotifications();
           loadBadgeCounts();
         }
-      }, 60000); // 60 seconds
+      }, 60000);
 
-      // Clean up interval on unmount
       return () => clearInterval(intervalId);
     }
-  }, []);
+  }, [authUser?.email]);
 
   const loadNotifications = async () => {
     try {
-      // Only load notifications if user is authenticated with a valid token
-      const token = AuthService.getAccessToken();
+      const token = localStorage.getItem('backend_session_token');
       if (!token) {
         console.log('Skipping notifications load - no access token');
         return;
@@ -137,8 +127,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const loadBadgeCounts = async () => {
     try {
-      // Only load badge counts if user is authenticated with a valid token
-      const token = AuthService.getAccessToken();
+      const token = localStorage.getItem('backend_session_token');
       if (!token) {
         console.log('Skipping badge counts load - no access token');
         return;
@@ -166,14 +155,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const loadAppSettings = async () => {
     try {
-      const token = AuthService.getAccessToken();
+      const token = localStorage.getItem('backend_session_token');
       if (!token) return;
       const result = await getAppSettings();
       if (result && result.settings && result.settings.appName) {
         setAppName(result.settings.appName);
       }
-    } catch (error: any) {
-      console.error('Failed to load app settings:', error.message || error);
+    } catch {
+      // Non-critical — silently ignore
     }
   };
 

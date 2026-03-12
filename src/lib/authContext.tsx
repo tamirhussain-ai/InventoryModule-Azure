@@ -1,9 +1,11 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { PublicClientApplication, AccountInfo, EventType, AuthenticationResult } from '@azure/msal-browser';
+import { PublicClientApplication, AccountInfo } from '@azure/msal-browser';
 import { msalConfig, loginRequest } from './msalConfig';
 
+// ─── MSAL instance (needed for Microsoft SSO only) ────────────────────────────
 export const msalInstance = new PublicClientApplication(msalConfig);
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 export type AppRole = 'admin' | 'fulfillment' | 'requestor' | 'approver';
 
 export interface AppUser {
@@ -14,7 +16,7 @@ export interface AppUser {
   department?: string;
 }
 
-// ─── Allowlist helpers ────────────────────────────────────────────────────────
+// ─── Allowlist (Phase 1 — stored in localStorage) ────────────────────────────
 const ALLOWLIST_KEY = 'shc_allowed_emails';
 
 export interface AllowedUser {
@@ -25,10 +27,8 @@ export interface AllowedUser {
 }
 
 export function getAllowedUsers(): AllowedUser[] {
-  try {
-    const raw = localStorage.getItem(ALLOWLIST_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(ALLOWLIST_KEY) || '[]'); }
+  catch { return []; }
 }
 
 export function saveAllowedUsers(users: AllowedUser[]) {
@@ -36,14 +36,13 @@ export function saveAllowedUsers(users: AllowedUser[]) {
 }
 
 export function isEmailAllowed(email: string): AllowedUser | null {
-  const list = getAllowedUsers();
-  return list.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
+  return getAllowedUsers().find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
 }
 
 export function addAllowedUser(user: AllowedUser) {
   const list = getAllowedUsers();
-  const exists = list.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
-  if (exists >= 0) { list[exists] = user; } else { list.push(user); }
+  const i = list.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
+  if (i >= 0) list[i] = user; else list.push(user);
   saveAllowedUsers(list);
 }
 
@@ -51,18 +50,99 @@ export function removeAllowedUser(email: string) {
   saveAllowedUsers(getAllowedUsers().filter(u => u.email.toLowerCase() !== email.toLowerCase()));
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Session storage helpers ──────────────────────────────────────────────────
+const SESSION_USER_KEY = 'shc_session_user';
+const SESSION_TOKEN_KEY = 'backend_session_token';
+
+export function getStoredUser(): AppUser | null {
+  try { return JSON.parse(localStorage.getItem(SESSION_USER_KEY) || 'null'); }
+  catch { return null; }
+}
+
+export function getStoredToken(): string | null {
+  return localStorage.getItem(SESSION_TOKEN_KEY);
+}
+
+function storeSession(user: AppUser, token: string) {
+  localStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
+  localStorage.setItem(SESSION_TOKEN_KEY, token);
+}
+
+export function clearSession() {
+  localStorage.removeItem(SESSION_USER_KEY);
+  localStorage.removeItem(SESSION_TOKEN_KEY);
+  localStorage.removeItem('msal_access_token');
+  localStorage.removeItem('backend_user');
+}
+
+// ─── API config ───────────────────────────────────────────────────────────────
+const API_URL = import.meta.env.VITE_API_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+// ─── Password signin ──────────────────────────────────────────────────────────
+export async function passwordSignin(email: string, password: string): Promise<{ user: AppUser; token: string }> {
+  const res = await fetch(`${API_URL}/auth/signin`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Sign in failed');
+
+  const user: AppUser = {
+    id: data.user?.id || email,
+    email: data.user?.email || email,
+    name: data.user?.name || email,
+    role: (data.user?.role as AppRole) || 'requestor',
+    department: data.user?.department,
+  };
+  return { user, token: data.accessToken };
+}
+
+// ─── MSAL signin via Graph token ─────────────────────────────────────────────
+async function msalGraphSignin(msalAccessToken: string, attempt = 0): Promise<{ token: string; user: any } | null> {
+  try {
+    // Small delay on retry to let the page settle after Microsoft redirect
+    if (attempt > 0) await new Promise(r => setTimeout(r, 500 * attempt));
+    
+    const res = await fetch(`${API_URL}/auth/msal-signin`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ msalToken: msalAccessToken }),
+    });
+    const text = await res.text();
+    console.log('[Auth] msalGraphSignin response status:', res.status, 'body:', text.slice(0, 200));
+    if (!res.ok) return null;
+    const data = JSON.parse(text);
+    return data.accessToken ? { token: data.accessToken, user: data.user } : null;
+  } catch (e) {
+    console.error('[Auth] msalGraphSignin error (attempt', attempt, '):', e);
+    if (attempt < 3) return msalGraphSignin(msalAccessToken, attempt + 1);
+    return null;
+  }
+}
+
+// ─── Context type ─────────────────────────────────────────────────────────────
 interface AuthContextType {
   user: AppUser | null;
-  msalAccount: AccountInfo | null;
-  accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   isAccessDenied: boolean;
-  login: () => Promise<void>;
+  loginWithMicrosoft: () => Promise<void>;
+  loginWithPassword: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  getToken: () => Promise<string | null>;
   setUserRole: (role: AppRole, department?: string) => void;
+  // Legacy aliases
+  login: () => Promise<void>;
+  msalAccount: AccountInfo | null;
+  accessToken: string | null;
+  getToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -75,136 +155,153 @@ export function useAuth(): AuthContextType {
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [msalAccount, setMsalAccount] = useState<AccountInfo | null>(null);
-  const [appUser, setAppUser] = useState<AppUser | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<AppUser | null>(() => getStoredUser());
+  // If session already exists, no loading needed
+  const [isLoading, setIsLoading] = useState(() => !getStoredToken() || !getStoredUser());
   const [isAccessDenied, setIsAccessDenied] = useState(false);
+  const [msalAccount, setMsalAccount] = useState<AccountInfo | null>(null);
 
   useEffect(() => {
     const init = async () => {
-      // Handle the redirect response first (called after Microsoft redirects back)
+      // If we already have a stored session, we're done — no MSAL needed
+      if (getStoredToken() && getStoredUser()) {
+        console.log('[Auth] Session exists, skipping MSAL init');
+        setIsLoading(false);
+        return;
+      }
+      console.log('[Auth] No session, starting MSAL init');
+
+      // Otherwise check for MSAL redirect result
       try {
+        // Clear stale MSAL interaction state
+        Object.keys(localStorage)
+          .filter(k => k.includes('interaction.status') || k.includes('request.initiated') || k.includes('.state.'))
+          .forEach(k => localStorage.removeItem(k));
+
         const result = await msalInstance.handleRedirectPromise();
+        console.log('[Auth] handleRedirectPromise result:', result ? 'has result' : 'null', 'accessToken:', !!result?.accessToken);
         if (result?.account) {
-          // Came back from a redirect login
           setMsalAccount(result.account);
-          setAccessToken(result.accessToken);
-          localStorage.setItem('msal_access_token', result.accessToken);
-          await hydrateAppUser(result.account);
+          // Pass the access token directly from the redirect result
+          await hydrateFromMsal(result.account, result.accessToken);
+          return;
+        }
+
+        // Check MSAL cache — try silent token acquisition
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+          setMsalAccount(accounts[0]);
+          try {
+            const silent = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] });
+            await hydrateFromMsal(accounts[0], silent.accessToken);
+          } catch {
+            // Silent failed — user needs to sign in again
+            setIsLoading(false);
+          }
           return;
         }
       } catch (err) {
-        console.error('[Auth] Redirect error:', err);
+        console.error('[Auth] MSAL init error:', err);
       }
 
-      // Check for existing cached session
-      const accounts = msalInstance.getAllAccounts();
-      console.log('[Auth] Cached accounts:', accounts.length);
-      if (accounts.length > 0) {
-        const account = accounts[0];
-        setMsalAccount(account);
-        await hydrateAppUser(account);
-      } else {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     };
 
     init();
   }, []);
 
-  const hydrateAppUser = async (account: AccountInfo) => {
+  const hydrateFromMsal = async (account: AccountInfo, msalAccessToken?: string) => {
     const email = account.username;
+    console.log('[Auth] hydrateFromMsal called, email:', email, 'hasToken:', !!msalAccessToken);
+
+    if (!msalAccessToken) {
+      console.error('[Auth] No MSAL access token available');
+      setIsLoading(false);
+      return;
+    }
+
+    // Sign in with backend using the real MSAL token
+    console.log('[Auth] Calling msalGraphSignin...');
+    const result = await msalGraphSignin(msalAccessToken);
+    console.log('[Auth] msalGraphSignin result:', result ? 'success' : 'null');
+    if (!result) { setIsLoading(false); return; }
+
+    // Backend returns the real user profile — use it for role/id
+    const backendUser = result.user;
     const allUsers = getAllowedUsers();
 
-    // Bootstrap: first ever login becomes admin
+    // Bootstrap allowlist if empty
     if (allUsers.length === 0) {
-      addAllowedUser({ email, role: 'admin', addedAt: new Date().toISOString() });
+      addAllowedUser({ email, role: backendUser?.role || 'admin', addedAt: new Date().toISOString() });
     } else if (!isEmailAllowed(email)) {
       setIsAccessDenied(true);
       setIsLoading(false);
       return;
     }
 
-    setIsAccessDenied(false);
     const entry = isEmailAllowed(email)!;
-    setAppUser({
-      id: account.localAccountId,
+    const appUser: AppUser = {
+      id: backendUser?.id || account.localAccountId,
       email,
-      name: account.name || email,
-      role: entry.role,
-      department: entry.department,
-    });
+      name: backendUser?.name || account.name || email,
+      role: entry.role || backendUser?.role || 'requestor',
+      department: entry.department || backendUser?.department,
+    };
 
-    try {
-      const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account });
-      setAccessToken(result.accessToken);
-      localStorage.setItem('msal_access_token', result.accessToken);
-    } catch {
-      console.warn('[Auth] Silent token failed');
-    }
-
+    storeSession(appUser, result.token);
+    setUser(appUser);
     setIsLoading(false);
   };
 
-  // Use redirect — works on all browsers without COOP header issues
-  const login = async (): Promise<void> => {
-    await msalInstance.loginRedirect({
-      ...loginRequest,
-      prompt: 'select_account',
-    });
-    // Page will redirect to Microsoft, then come back — handled in useEffect above
+  const loginWithMicrosoft = async () => {
+    Object.keys(localStorage)
+      .filter(k => k.includes('interaction.status') || k.includes('request.initiated') || k.includes('.state.'))
+      .forEach(k => localStorage.removeItem(k));
+    await msalInstance.loginRedirect({ ...loginRequest, prompt: 'select_account' });
   };
 
-  const logout = async (): Promise<void> => {
-    localStorage.removeItem('msal_access_token');
-    localStorage.removeItem('shc_allowed_emails');
+  const loginWithPassword = async (email: string, password: string) => {
+    const { user: appUser, token } = await passwordSignin(email, password);
+    storeSession(appUser, token);
+    setUser(appUser);
+  };
+
+  const logout = async () => {
+    clearSession();
+    setUser(null);
     setMsalAccount(null);
-    setAppUser(null);
-    setAccessToken(null);
     setIsAccessDenied(false);
 
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0) {
-      await msalInstance.logoutRedirect({
-        account: accounts[0],
-        postLogoutRedirectUri: window.location.origin,
-      });
+      await msalInstance.logoutRedirect({ account: accounts[0], postLogoutRedirectUri: window.location.origin });
     } else {
       window.location.href = '/';
     }
   };
 
-  const getToken = async (): Promise<string | null> => {
-    if (!msalAccount) return null;
-    try {
-      const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account: msalAccount });
-      setAccessToken(result.accessToken);
-      localStorage.setItem('msal_access_token', result.accessToken);
-      return result.accessToken;
-    } catch {
-      return null;
-    }
-  };
-
   const setUserRole = (role: AppRole, department?: string) => {
-    if (!appUser) return;
-    addAllowedUser({ email: appUser.email, role, department, addedAt: new Date().toISOString() });
-    setAppUser(prev => prev ? { ...prev, role, department } : prev);
+    if (!user) return;
+    addAllowedUser({ email: user.email, role, department, addedAt: new Date().toISOString() });
+    const updated = { ...user, role, department };
+    storeSession(updated, getStoredToken()!);
+    setUser(updated);
   };
 
   return (
     <AuthContext.Provider value={{
-      user: appUser,
-      msalAccount,
-      accessToken,
-      isAuthenticated: !!msalAccount && !isAccessDenied,
+      user,
+      isAuthenticated: !!user && !isAccessDenied,
       isLoading,
       isAccessDenied,
-      login,
+      loginWithMicrosoft,
+      loginWithPassword,
       logout,
-      getToken,
       setUserRole,
+      login: loginWithMicrosoft,
+      msalAccount,
+      accessToken: getStoredToken(),
+      getToken: async () => getStoredToken(),
     }}>
       {children}
     </AuthContext.Provider>
